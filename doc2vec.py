@@ -6,6 +6,8 @@ import sys
 import joblib
 import pandas as pd
 
+# TODO: CHENGE DIRECTORIES TO NEW REPOSITORY AND SIMPLY TO BASE DIRECTORY
+# TODO: CHENGE OBJECT TO FIT, TRANSFORM
 class Doc2Vec:
     """
     this class creates a model that represent a document with an embedded vector

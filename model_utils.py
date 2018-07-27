@@ -63,13 +63,17 @@ class CustomDataset(dt.Dataset):
         """
 
         return len(self.branch_comments_raw_text_df.index)
-
+# TODO: understand dimensions of df vs. new tensor
+# TODO: build function that embeds the raw text and put the function in a different module
     def df_to_tensor(self, df):
         """
         this method takes a df and returns a tensor of embedded / numerical raw data ready for model input
         :return: tensor
         """
+        seq_length = len(df.columns)
+
         for row in df.iteritems():
-            vec_test = self.embeder.infer_doc_vector(test)
+            hello = 1
+
 
         return
