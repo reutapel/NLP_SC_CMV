@@ -1,6 +1,8 @@
 import torch as tr
 import pandas as pd
+import numpy as np
 import torch
+import numbers
 import torch.autograd as autograd
 import torch.nn as nn
 import torch.nn.functional as F
@@ -167,6 +169,33 @@ import torch.optim as optim
 # words_to_remove_list = ["[deleted]'", '>', "Confirmed", "b'", 'b"', '&amp;#8710;', '&#8710;', '&#916;', '&amp;916;',
 #                         '∆', '!delta', 'Δ', '&delta;']
 
-dtype = torch.float
-device = torch.device("cpu")
+# dtype = torch.float
+# device = torch.device("cpu")
+
+
+# device = torch.device("cpu")
+
+
+def df_to_tensor(df):
+    """
+    this method takes a df and returns a tensor of
+    :return: tensor
+    """
+
+    # get shapes
+    df_rows_num = df.shape[0]
+    df_columns_num = df.shape[1]
+
+    # if values of df is numbers
+    if isinstance(df.iloc[0, 0], numbers.Number):
+        print("new tensor shape is", df_rows_num,",", df_columns_num)
+        return tr.tensor(df.values)
+    # if values of df is vectors
+    else:
+        df_value_length = len(df.iloc[0, 0])
+        df_content = df.values
+        tensor = tr.Tensor([[column for column in row] for row in df_content])
+        print("new tensor shape is", df_rows_num, ",", df_columns_num, ",", df_value_length)
+
+        return tensor
 

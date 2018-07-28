@@ -3,6 +3,7 @@ import torch.utils.data as dt
 #import torchtext
 #import spacy
 import gensim
+import numbers
 
 
 class CustomDataset(dt.Dataset):
@@ -50,7 +51,7 @@ class CustomDataset(dt.Dataset):
         :param index: index of data point to be retrieved
         :return: (data point elements, label)
         """
-        # TODO: embed comments in branch_comments_raw_text_df , embed submission text
+
         X = [self.branch_comments_raw_text_df.iloc[index],self.branch_comments_features_df[index],
              self.branch_comments_user_profiles_df[index], self.submission_data_dict[self.branch_submission_dict[index]]]
         y = self.branch_deltas_data_dict[index]
@@ -63,17 +64,26 @@ class CustomDataset(dt.Dataset):
         """
 
         return len(self.branch_comments_raw_text_df.index)
-# TODO: understand dimensions of df vs. new tensor
-# TODO: build function that embeds the raw text and put the function in a different module
+
     def df_to_tensor(self, df):
         """
-        this method takes a df and returns a tensor of embedded / numerical raw data ready for model input
+        this method takes a df and returns a tensor of
         :return: tensor
         """
-        seq_length = len(df.columns)
 
-        for row in df.iteritems():
-            hello = 1
+        # get shapes
+        df_rows_num = df.shape[0]
+        df_columns_num = df.shape[1]
 
+        # if values of df is numbers
+        if isinstance(df.iloc[0, 0], numbers.Number):
+            print("new tensor shape is", df_rows_num, ",", df_columns_num)
+            return tr.tensor(df.values)
+        # if values of df is vectors
+        else:
+            df_value_length = len(df.iloc[0, 0])
+            df_content = df.values
+            tensor = tr.Tensor([[column for column in row] for row in df_content])
+            print("new tensor shape is", df_rows_num, ",", df_columns_num, ",", df_value_length)
 
-        return
+            return tensor
