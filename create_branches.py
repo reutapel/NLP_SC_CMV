@@ -7,7 +7,7 @@ import os
 import time
 
 base_directory = os.path.abspath(os.curdir)
-data_directory = os.path.join(base_directory, 'change my view')
+data_directory = os.path.join(base_directory, 'data')
 original_data_file_path = os.path.join(data_directory, 'all_submissions_comments_with_label_all_deltalog_final.csv')
 # all_submissions_comments_with_label_all_deltalog_final
 
