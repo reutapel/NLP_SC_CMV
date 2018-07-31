@@ -49,14 +49,25 @@ class LSTM(nn.Module):
 
         # x = [self.branch_comments_embedded_text_tensor.[index], self.branch_comments_features_tensor[index],
         # self.branch_comments_user_profiles_tensor[index],
-        #  self.submission_data_dict[self.branch_submission_dict[index]]]
+        #  self.submission_data_dict[self.branch_submission_dict[index]] =
+        # [submission text, submission features, submitter profile features] ]
 
+        branch_comments_embedded_text = x[0]
+        branch_comments_features_tensor = x[1]
+        branch_comments_user_profiles_tensor = x[2]
+        submission_text = x[3][0]
+        submission_features = x[3][1]
+        submitter_profile_features = x[3][2]
+        # TODO: add smart concatenation of 3 vectors with 3 lstm
+        output_text = self.lstm_text(branch_comments_embedded_text)
+        output_comments = self.lstm_comments(branch_comments_features_tensor)
+        output_users = self.lstm_users(branch_comments_user_profiles_tensor)
 
-        out = self.layer1(x)
-        return out
+        return
 
-
-
+# TODO: ensure zero weights initializing between batches
+# TODO: all pack padded issue
+# TODO: build logic concatenation in forward
 
 learning_rate = 0.001
 criterion = nn.CrossEntropyLoss()

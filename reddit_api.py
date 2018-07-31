@@ -472,30 +472,30 @@ def main():
     # create class instance
     connect = ApiConnection(subreddit)
 
-    # #get submissions of sub reddit
-    # subids = connect.get_submissions()
-    #
-    # #get comments of submissions
-    # data_name = "all_submissions_comments.csv"
-    # all_submissions_comments, OP_deltas_comments_ids = connect.parse_comments(subids, data_name)
-    #
-    # print('{} : finished Run for sub reddit {}'.format((time.asctime(time.localtime(time.time()))), subreddit))
-    # logging.info('{} : finished Run for sub reddit {}'.format((time.asctime(time.localtime(time.time()))), subreddit))
-    #
-    # # get outcome from delta log
-    # delta_log = 'DeltaLog'
-    # OP_deltas_comments_ids_deltalog = connect.get_deltas_log(delta_log)
-    #
-    # #create label
-    # df_name = "all_submissions_comments_with_label.csv"
-    # all_submissions_comments_with_label = connect.create_label(all_submissions_comments,
-    #                                                            OP_deltas_comments_ids_deltalog, OP_deltas_comments_ids,
-    #                                                            df_name)
-    # # add missing delta from delta log
-    # connect.complete_deltas_from_log_not_in_data(OP_deltas_comments_ids_deltalog, all_submissions_comments_with_label)
+    #get submissions of sub reddit
+    subids = connect.get_submissions()
+
+    #get comments of submissions
+    data_name = "all_submissions_comments.csv"
+    all_submissions_comments, OP_deltas_comments_ids = connect.parse_comments(subids, data_name)
+
+    print('{} : finished Run for sub reddit {}'.format((time.asctime(time.localtime(time.time()))), subreddit))
+    logging.info('{} : finished Run for sub reddit {}'.format((time.asctime(time.localtime(time.time()))), subreddit))
+
+    # get outcome from delta log
+    delta_log = 'DeltaLog'
+    OP_deltas_comments_ids_deltalog = connect.get_deltas_log(delta_log)
+
+    #create label
+    df_name = "all_submissions_comments_with_label.csv"
+    all_submissions_comments_with_label = connect.create_label(all_submissions_comments,
+                                                               OP_deltas_comments_ids_deltalog, OP_deltas_comments_ids,
+                                                               df_name)
+    # add missing delta from delta log
+    connect.complete_deltas_from_log_not_in_data(OP_deltas_comments_ids_deltalog, all_submissions_comments_with_label)
 
     # get all submissions data final
-    connect.get_all_submissions_final_data()
+    #connect.get_all_submissions_final_data()
 
 
 if __name__ == '__main__':
