@@ -175,10 +175,11 @@ import torch.optim as optim
 
 # device = torch.device("cpu")
 
+daf = pd.DataFrame([[2,13,8],[45,6,0]])
 
 def df_to_tensor(df):
     """
-    this method takes a df and returns a tensor of
+    this method takes a df of values / vectores and returns a tensor of 2 dim/ 3 dim accordingly
     :return: tensor
     """
 
@@ -188,9 +189,9 @@ def df_to_tensor(df):
 
     # if values of df is numbers
     if isinstance(df.iloc[0, 0], numbers.Number):
-        print("new tensor shape is", df_rows_num,",", df_columns_num)
-        return tr.tensor(df.values)
-    # if values of df is vectors
+        print("new tensor shape is", df_rows_num, ",", df_columns_num)
+        return tr.Tensor(df.values)
+    # if values of df are vectors
     else:
         df_value_length = len(df.iloc[0, 0])
         df_content = df.values
@@ -199,3 +200,5 @@ def df_to_tensor(df):
 
         return tensor
 
+daf_t = df_to_tensor(daf)
+print("ok")
