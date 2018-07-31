@@ -2,7 +2,7 @@ import torch as tr
 import torch.utils.data as dt
 #import torchtext
 #import spacy
-import gensim
+#import gensim
 import numbers
 
 
@@ -12,23 +12,23 @@ class CustomDataset(dt.Dataset):
     Class for handling data before modeling, pre-process and loading
     """
 
-    def __init__(self, branch_comments_raw_text_df, branch_comments_features_df, branch_comments_user_profiles_df,
-                 branch_submission_dict, submission_data_dict, branch_deltas_data_dict, embeder):
+    def __init__(self, branch_comments_embedded_text_df, branch_comments_features_df, branch_comments_user_profiles_df,
+                 branch_submission_dict, submission_data_dict, branch_deltas_data_dict):
         """
         this method uploads and organize all elements in the data for the different parts of the model
         """
 
         # IMPORTANT: all parts of data, are ordered by length of branch - descending, rest of entries are filled with zeros
 
-        # First part of dataset is the raw text embedded vector, df M*N:
-        # M - number of branches, N - maximum number of comments in branch, content - embedded vector of raw text
-        self.branch_comments_raw_text_df = branch_comments_raw_text_df
+        # First part of dataset is the raw text embedded, df M*N:
+        # M - number of branches, N - maximum number of comments in branch, content - embedded vectors of raw text
+        self.branch_comments_embedded_text_tensor = self.df_to_tensor(branch_comments_embedded_text_df)
 
         # Second part of dataset is the features of the comments, df M*N, content - comment features
-        self.branch_comments_features_df = branch_comments_features_df
+        self.branch_comments_features_tensor = self.df_to_tensor(branch_comments_features_df)
 
         # Third part of dataset is the profiles of the users, df M*N, content - user's features
-        self.branch_comments_user_profiles_df = branch_comments_user_profiles_df
+        self.branch_comments_user_profiles_tensor = self.df_to_tensor(branch_comments_user_profiles_df)
 
         # Forth part of dataset contains two dictionaries:
         # 1. {branch index: submission id}
@@ -40,8 +40,6 @@ class CustomDataset(dt.Dataset):
         # [deltas comments location in branch]]}
         self.branch_deltas_data_dict = branch_deltas_data_dict
 
-        self.embeder = embeder
-
         pass
 
     def __getitem__(self, index):
@@ -52,10 +50,11 @@ class CustomDataset(dt.Dataset):
         :return: (data point elements, label)
         """
 
-        X = [self.branch_comments_raw_text_df.iloc[index],self.branch_comments_features_df[index],
-             self.branch_comments_user_profiles_df[index], self.submission_data_dict[self.branch_submission_dict[index]]]
+        x = [self.branch_comments_embedded_text_tensor[index], self.branch_comments_features_tensor[index],
+             self.branch_comments_user_profiles_tensor[index],
+             self.submission_data_dict[self.branch_submission_dict[index]]]
         y = self.branch_deltas_data_dict[index]
-        return (X, y)
+        return x, y
 
     def __len__(self):
         """
@@ -63,11 +62,11 @@ class CustomDataset(dt.Dataset):
         :return: size of dataset
         """
 
-        return len(self.branch_comments_raw_text_df.index)
+        return self.branch_comments_embedded_text_tensor.size()[0]
 
     def df_to_tensor(self, df):
         """
-        this method takes a df and returns a tensor of
+        this method takes a df of values / vectores and returns a tensor of 2 dim/ 3 dim accordingly
         :return: tensor
         """
 
@@ -78,8 +77,8 @@ class CustomDataset(dt.Dataset):
         # if values of df is numbers
         if isinstance(df.iloc[0, 0], numbers.Number):
             print("new tensor shape is", df_rows_num, ",", df_columns_num)
-            return tr.tensor(df.values)
-        # if values of df is vectors
+            return tr.Tensor(df.values)
+        # if values of df are vectors
         else:
             df_value_length = len(df.iloc[0, 0])
             df_content = df.values
