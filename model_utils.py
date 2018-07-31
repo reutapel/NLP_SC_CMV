@@ -13,7 +13,7 @@ class CustomDataset(dt.Dataset):
     """
 
     def __init__(self, branch_comments_embedded_text_df, branch_comments_features_df, branch_comments_user_profiles_df,
-                 branch_submission_dict, submission_data_dict, branch_deltas_data_dict, embeder):
+                 branch_submission_dict, submission_data_dict, branch_deltas_data_dict):
         """
         this method uploads and organize all elements in the data for the different parts of the model
         """
@@ -50,10 +50,11 @@ class CustomDataset(dt.Dataset):
         :return: (data point elements, label)
         """
 
-        X = [self.branch_comments_embedded_text_tensor.iloc[index],self.branch_comments_features_tensor[index],
-             self.branch_comments_user_profiles_tensor[index], self.submission_data_dict[self.branch_submission_dict[index]]]
+        x = [self.branch_comments_embedded_text_tensor[index], self.branch_comments_features_tensor[index],
+             self.branch_comments_user_profiles_tensor[index],
+             self.submission_data_dict[self.branch_submission_dict[index]]]
         y = self.branch_deltas_data_dict[index]
-        return X, y
+        return x, y
 
     def __len__(self):
         """
