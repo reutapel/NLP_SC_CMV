@@ -186,7 +186,7 @@ class BranchStatistics:
                     num_comments_after_delta = np.nan
                 # insert branch to dict and df
                 self.insert_row_branch_df(branch_key, child['submission_id'], branch_df, num_delta,
-                                          num_comments_after_delta, delta_row_num + 1)
+                                          num_comments_after_delta, delta_row_num)
                 stack.pop()  # take out the leaf
                 # update the "root parameters" before next branch (at the end of this branch):
                 self.num_branches_in_root += 1

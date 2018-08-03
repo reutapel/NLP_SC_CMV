@@ -15,6 +15,7 @@ import numpy as np
 base_directory = os.path.abspath(os.curdir)
 log_directory = os.path.join(base_directory, 'logs')
 results_directory = os.path.join(base_directory, 'change my view')
+data_directory = os.path.join(base_directory, 'data')
 LOG_FILENAME = os.path.join(log_directory,
                             datetime.now().strftime('LogFile_importing_change_my_view_%d_%m_%Y_%H_%M_%S.log'))
 logging.basicConfig(filename=LOG_FILENAME, level=logging.INFO, )
@@ -426,12 +427,14 @@ class ApiConnection:
 
     def get_all_submissions_final_data(self):
 
-        all_submissions_comments_label_union = pd.read_csv("all_submissions_comments_with_label_all_deltalog_final.csv")
+        all_submissions_comments_label_union =\
+            pd.read_csv(os.path.join(data_directory,
+                                     'all_submissions_comments_with_label_all_deltalog_final_with_branches.csv'))
         all_subids = list(all_submissions_comments_label_union.submission_id.unique())
 
         num_of_total_submissions = 0
         submissions = list()
-        with open(os.path.join(results_directory, 'all_submissions_final.csv'), 'a') as file:
+        with open(os.path.join(data_directory, 'all_submissions_final.csv'), 'a') as file:
             writer = csv.writer(file, lineterminator='\n')
             fieldnames = ['submission_author', 'submission_title', 'submission_created_utc', 'submission_body',
                           'submission_id']
@@ -441,7 +444,7 @@ class ApiConnection:
         all_subids = [w.strip("'") for w in all_subids]
         for subid in all_subids:
             submission = self.r_connection.submission(id=subid)
-            with open(os.path.join(results_directory, 'all_submissions_final.csv'), 'a') as file:
+            with open(os.path.join(data_directory, 'all_submissions_final.csv'), 'a') as file:
                 writer = csv.writer(file, lineterminator='\n')
                 writer.writerow([submission.author, submission.title.encode('utf-8'), submission.created_utc,
                                  submission.selftext.encode('utf-8'), submission.id])
@@ -459,7 +462,7 @@ class ApiConnection:
         # save all submissions object
         print("saving submissions list")
         logging.info("saving submissions list")
-        with open('submissions_final.pickle', 'wb') as handle:
+        with open(os.path.join(data_directory, 'submissions_final.pickle'), 'wb') as handle:
             pickle.dump(submissions, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         return
