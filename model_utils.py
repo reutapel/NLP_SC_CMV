@@ -11,7 +11,7 @@ class CustomDataset(dt.Dataset):
     """
     Class for handling data before modeling, pre-process and loading
     """
-
+    #TODO: convert eature vectors to tensors
     def __init__(self, branch_comments_embedded_text_df, branch_comments_features_df, branch_comments_user_profiles_df,
                  branch_submission_dict, submission_data_dict, branch_deltas_data_dict):
         """
@@ -31,7 +31,7 @@ class CustomDataset(dt.Dataset):
         self.branch_comments_user_profiles_tensor = self.df_to_tensor(branch_comments_user_profiles_df)
 
         # Forth part of dataset contains two dictionaries:
-        # 1. {branch index: submission id}
+        # 1. {branch index: [submission id, [branch features]]}
         # 2. {submission id: [submission text, submission features, submitter profile features]}
         self.branch_submission_dict = branch_submission_dict
         self.submission_data_dict = submission_data_dict
@@ -52,7 +52,7 @@ class CustomDataset(dt.Dataset):
 
         x = [self.branch_comments_embedded_text_tensor[index], self.branch_comments_features_tensor[index],
              self.branch_comments_user_profiles_tensor[index],
-             self.submission_data_dict[self.branch_submission_dict[index]]]
+             self.submission_data_dict[self.branch_submission_dict[index][0]], self.branch_submission_dict[index][1]]
         y = self.branch_deltas_data_dict[index]
         return x, y
 
@@ -66,7 +66,7 @@ class CustomDataset(dt.Dataset):
 
     def df_to_tensor(self, df):
         """
-        this method takes a df of values / vectores and returns a tensor of 2 dim/ 3 dim accordingly
+        this method takes a df of values / vectors and returns a tensor of 2 dim/ 3 dim accordingly
         :return: tensor
         """
 
