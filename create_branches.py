@@ -9,7 +9,6 @@ import time
 base_directory = os.path.abspath(os.curdir)
 data_directory = os.path.join(base_directory, 'data')
 original_data_file_path = os.path.join(data_directory, 'all_submissions_comments_with_label_all_deltalog_final.csv')
-# all_submissions_comments_with_label_all_deltalog_final
 
 
 class BranchStatistics:
@@ -187,7 +186,7 @@ class BranchStatistics:
                     num_comments_after_delta = np.nan
                 # insert branch to dict and df
                 self.insert_row_branch_df(branch_key, child['submission_id'], branch_df, num_delta,
-                                          num_comments_after_delta, delta_row_num + 1)
+                                          num_comments_after_delta, delta_row_num)
                 stack.pop()  # take out the leaf
                 # update the "root parameters" before next branch (at the end of this branch):
                 self.num_branches_in_root += 1
@@ -303,17 +302,6 @@ class BranchStatistics:
                      self.number_submissions))
 
         return
-
-
-def calculate_statistics():
-    statistics = pd.DataFrame(columns=['mean', 'STD', 'count'])
-    branch_numbers_df = pd.read_csv(os.path.join(data_directory, 'branch_comments_info_df_small.csv'))
-    branch_comments_info_df = pd.read_csv(os.path.join(data_directory, 'branch_numbers_df_small.csv'))
-    # branch length statistics:
-    branch_length = branch_numbers_df['branch_length']
-    branch_length_stat = {'mean': branch_length.mean(), 'STD': branch_length.std(), 'count': branch_length.count()}
-    branch_length.plot(kind='hist')
-    statistics = statistics.append(branch_length_stat)
 
 
 def main():
