@@ -4,7 +4,7 @@ from torch.autograd import Variable
 from torch.nn import functional as F
 import math
 
-
+# TODO: make class of initialize for lstms and convs to clean
 class DeltaModel(nn.Module):
     """
     A deep learning model class with the following logic of taking 3 different sectors of signals in data for predicting
