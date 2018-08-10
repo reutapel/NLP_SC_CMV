@@ -11,7 +11,9 @@ class CustomDataset(dt.Dataset):
     """
     Class for handling data before modeling, pre-process and loading
     """
-    #TODO: convert eature vectors to tensors
+    # TODO: convert feature vectors to tensors
+    # TODO: ensure data set is sorted by branch length and padded with zeros
+    # TODO: validate df and dictionaries keys/ indexes are aligned
     def __init__(self, branch_comments_embedded_text_df, branch_comments_features_df, branch_comments_user_profiles_df,
                  branch_submission_dict, submission_data_dict, branch_deltas_data_dict):
         """
@@ -31,16 +33,14 @@ class CustomDataset(dt.Dataset):
         self.branch_comments_user_profiles_tensor = self.df_to_tensor(branch_comments_user_profiles_df)
 
         # Forth part of dataset contains two dictionaries:
-        # 1. {branch index: [submission id, [branch features]]}
-        # 2. {submission id: [submission text, submission features, submitter profile features]}
+        # 1. branch_submission_dict: {branch index: [submission id, [branch features]]}
+        # 2. submission_data_dict: {submission id: [submission text, submission features, submitter profile features]}
         self.branch_submission_dict = branch_submission_dict
         self.submission_data_dict = submission_data_dict
 
         # Fifth part of the dataset is a dictionary: {branch index: [is delta in branch, number of deltas in branch,
         # [deltas comments location in branch]]}
         self.branch_deltas_data_dict = branch_deltas_data_dict
-
-        pass
 
     def __getitem__(self, index):
         """
