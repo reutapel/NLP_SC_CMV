@@ -1,203 +1,165 @@
 import torch as tr
 import torch.nn as nn
-from torch.autograd import Variable
 from torch.nn import functional as F
 import math
 
-# TODO: make class of initialize for lstms and convs to clean
+# TODO: add batch normalization
 class DeltaModel(nn.Module):
     """
     A deep learning model class with the following logic of taking 3 different sectors of signals in data for predicting
     if the event "delta" occurred in the discussion "branch"
     """
-    def __init__(self, input_size_text, hidden_size_text, num_layers_text, batch_first_text,
-                 input_size_comments, hidden_size_comments, num_layers_comments, batch_first_comments,
-                 input_size_users, hidden_size_users, num_layers_users, batch_first_users, in_channels_text,
-                 out_channels_text, kernel_size_text, stride_text, padding_text, in_channels_sub_features,
-                 out_channels_sub_features, kernel_size_sub_features, stride_sub_features, padding_sub_features,
-                 in_channels_sub_profile_features, out_channels_sub_profile_features, kernel_size_sub_profile_features,
-                 stride_sub_profile_features, padding_sub_profile_features, input_size_text_sub, input_size_sub_features,
-                 input_size_sub_profile_features, num_labels, batch_size, first_linear_reduction, second_linear_reduction):
+    def __init__(self, init_lstm_text, init_lstm_comments, init_lstm_users, init_conv1d_text, init_conv1d_sub_features,
+                 init_conv1d_sub_profile_features, input_size_text_sub, input_size_sub_features,
+                 input_size_sub_profile_features, batch_size, num_labels, first_linear_reduction,
+                 second_linear_reduction, fc1_dropout, fc2_dropout):
         """
-
-        :param input_size_text: input size for LSTM of embedded text
-        :param hidden_size_text: output size vector of LSTM of embedded text
-        :param num_layers_text: number of layers in LSTM of embedded text
-        :param batch_first_text: if true tensor first dimension is batch size of LSTM of embedded text
-        :param input_size_comments: input size for LSTM of comments features
-        :param hidden_size_comments: output size vector of LSTM of comments features
-        :param num_layers_comments: number of layers in LSTM of comments features
-        :param batch_first_comments: if true tensor first dimension is batch size of LSTM of comments features
-        :param input_size_users: input size for LSTM of user features
-        :param hidden_size_users: output size vector of LSTM of user features
-        :param num_layers_users: number of layers in LSTM of user features
-        :param batch_first_users: if true tensor first dimension is batch size of LSTM of user features
-        :param in_channels_text (int): Number of channels in the input
-        :param out_channels_text (int): Number of channels produced by the convolution
-        :param kernel_size_text (int or tuple): Size of the convolving kernel
-        :param stride_text (int or tuple, optional): Stride of the convolution. Default: 1
-        :param padding_text (int or tuple, optional): Zero-padding added to both sides of the input. Default: 0
-        :param in_channels_sub_features (int): Number of channels in the input
-        :param out_channels_sub_features (int): Number of channels produced by the convolution
-        :param kernel_size_sub_features (int or tuple): Size of the convolving kernel
-        :param stride_sub_features (int or tuple, optional): Stride of the convolution. Default: 1
-        :param padding_sub_features (int or tuple, optional): Zero-padding added to both sides of the input. Default: 0
-        :param in_channels_sub_profile_features (int): Number of channels in the input
-        :param out_channels_sub_profile_features (int): Number of channels produced by the convolution
-        :param kernel_size_sub_profile_features (int or tuple): Size of the convolving kernel
-        :param stride_sub_profile_features (int or tuple, optional): Stride of the convolution. Default: 1
-        :param padding_sub_profile_features (int or tuple, optional): Zero-padding added to both sides of the input.
-        Default: 0
+        :param init_lstm_text: embedded text LSTM hyper parameters
+        :param init_lstm_comments: comment features LSTM hyper parameters
+        :param init_lstm_users: user features LSTM hyper parameters
+        :param init_conv1d_text: submission embedded text conv hyper parameters
+        :param init_conv1d_sub_features: submission features conv hyper parameters
+        :param init_conv1d_sub_profile_features: submitter features conv hyper parameters
         :param input_size_text_sub: length of embedded text vector of submission
         :param input_size_sub_features: length of submission feature vector
         :param input_size_sub_profile_features: length of submitter feature vector
+        :param batch_size: size of batch
         :param num_labels: number of labels
-        :param batch_size: batch size
         :param first_linear_reduction: linear size from branch hidden rep output to this size
         :param second_linear_reduction: linear size from first_linear_size output to this size
+        :param fc1_dropout: dropout probability before first linear layer
+        :param fc2_dropout: dropout probability before second linear layer
         """
         super(DeltaModel, self).__init__()
-
+        # check if gpu is available
         self.hparams.on_gpu = tr.cuda.is_available()
 
-        # define lstm's parameters
-        self.batch_size = batch_size
-        self.input_size_text = input_size_text
-        self.hidden_size_text = hidden_size_text
-        self.num_layers_text = num_layers_text
-        self.batch_first_text = batch_first_text
-        self.input_size_comments = input_size_comments
-        self.hidden_size_comments = hidden_size_comments
-        self.num_layers_comments = num_layers_comments
-        self.batch_first_comments = batch_first_comments
-        self.input_size_users = input_size_users
-        self.hidden_size_users = hidden_size_users
-        self.num_layers_users = num_layers_users
-        self.batch_first_users = batch_first_users
+        self.init_lstm_text = init_lstm_text
+        self.init_lstm_comments = init_lstm_comments
+        self.init_lstm_users = init_lstm_users
 
         # initialize LSTM's hidden states
-        self.hidden_text = self.init_hidden(self.num_layers_text, self.batch_size, self.hidden_size_text)
-        self.hidden_users = self.init_hidden(self.num_layers_users, self.batch_size, self.hidden_size_comments)
-        self.hidden_comments = self.init_hidden(self.num_layers_comments, self.batch_size, self.hidden_size_users)
-
-        # define convolution's parameters
-        self.in_channels_text = in_channels_text
-        self.out_channels_text = out_channels_text
-        self.kernel_size_text = kernel_size_text
-        self.stride_text = stride_text
-        self.padding_text = padding_text
-        self.in_channels_sub_features = in_channels_sub_features
-        self.out_channels_sub_features = out_channels_sub_features
-        self.kernel_size_sub_features = kernel_size_sub_features
-        self.stride_sub_features = stride_sub_features
-        self.padding_sub_features = padding_sub_features
-        self.in_channels_sub_profile_features = in_channels_sub_profile_features
-        self.out_channels_sub_profile_features = out_channels_sub_profile_features
-        self.kernel_size_sub_profile_features = kernel_size_sub_profile_features
-        self.stride_sub_profile_features = stride_sub_profile_features
-        self.padding_sub_profile_features = padding_sub_profile_features
-        self.input_size_text_sub = input_size_text_sub
-        self.input_size_sub_features = input_size_sub_features
-        self.input_size_sub_profile_features = input_size_sub_profile_features
+        self.hidden_text = self.init_hidden(self.init_lstm_text.num_layers, batch_size,
+                                            self.init_lstm_text.hidden_size)
+        self.hidden_comments = self.init_hidden(self.init_lstm_comments.num_layers, batch_size,
+                                                self.init_lstm_comments.hidden_size)
+        self.hidden_users = self.init_hidden(self.init_lstm_users.num_layers, batch_size,
+                                             self.init_lstm_users.hidden_size)
 
         # define layers
         # static layers definition- aggregates the parameters for the derivatives
-
         # LSTM layers
-        # parameters -
-        # input_size: embedding dimension or feature vector dimension
-        # hidden_size: The number of features in the hidden state `h`
-        # num_layers: number of lstm layers
-        # batch_first: True if batch dimension is first
+        self.lstm_text = self.create_lstm_layer(self.init_lstm_text.input_size, self.init_lstm_text.hidden_size,
+                                                self.init_lstm_text.num_layers,
+                                                self.init_lstm_text.batch_first)
 
-        self.lstm_text = nn.LSTM(
-            input_size=self.input_size_text,
-            hidden_size=self.hidden_size_text,
-            num_layers=self.num_layers_text,
-            batch_first=self.batch_first_text)
+        self.lstm_comments = self.create_lstm_layer(self.init_lstm_comments.input_size,
+                                                    self.init_lstm_comments.hidden_size,
+                                                    self.init_lstm_comments.num_layers,
+                                                    self.init_lstm_comments.batch_first)
 
-        self.lstm_comments = nn.LSTM(
-            input_size=self.input_size_comments,
-            hidden_size=self.hidden_size_comments,
-            num_layers=self.num_layers_comments,
-            batch_first=self.batch_first_comments)
-
-        self.lstm_users = nn.LSTM(
-            input_size=self.input_size_users,
-            hidden_size=self.hidden_size_users,
-            num_layers=self.num_layers_users,
-            batch_first=self.batch_first_users)
+        self.lstm_users = self.create_lstm_layer(self.init_lstm_users.input_size, self.init_lstm_users.hidden_size,
+                                                 self.init_lstm_users.num_layers, self.init_lstm_users.batch_first)
 
         # convolution layers
-        # parameters -
-        # in_channels: number of channels in the input
-        # out_channels: number of channels produced by the convolution (number of filters / kernels)
-        # kernel_size: sliding window dimension
-        # stride: step size of kernel
-        # padding: zero padding added to both sides of the input
+        self.conv_sub_text = self.create_conv1d_layer(init_conv1d_text.in_channels, init_conv1d_text.out_channels,
+                                                      init_conv1d_text.kernel_size, init_conv1d_text.stride,
+                                                      init_conv1d_text.padding)
 
-        self.conv_sub_text = nn.Conv1d(
-            self.in_channels_text,
-            self.out_channels_text,
-            self.kernel_size_text,
-            stride=self.stride_text,
-            padding=self.padding_text)
+        self.conv_sub_features = self.create_conv1d_layer(init_conv1d_sub_features.in_channels,
+                                                          init_conv1d_sub_features.out_channels,
+                                                          init_conv1d_sub_features.kernel_size,
+                                                          init_conv1d_sub_features.stride,
+                                                          init_conv1d_sub_features.padding)
 
-        self.conv_sub_features = nn.Conv1d(
-            self.in_channels_sub_features,
-            self.out_channels_sub_features,
-            self.kernel_size_sub_features,
-            stride=self.stride_sub_features,
-            padding=self.padding_sub_features)
+        self.conv_sub_user = self.create_conv1d_layer(init_conv1d_sub_profile_features.in_channels,
+                                                      init_conv1d_sub_profile_features.out_channels,
+                                                      init_conv1d_sub_profile_features.kernel_size,
+                                                      init_conv1d_sub_profile_features.stride,
+                                                      init_conv1d_sub_profile_features.padding)
+        # activation layers
+        self.leaky_relu_text = nn.LeakyReLU(init_conv1d_text.leakyRelu)
+        self.leaky_relu_features = nn.LeakyReLU(init_conv1d_sub_features.leakyRelu)
+        self.leaky_relu_user = nn.LeakyReLU(init_conv1d_sub_profile_features.leakyRelu)
 
-        self.conv_sub_user = nn.Conv1d(
-            self.in_channels_sub_profile_features,
-            self.out_channels_sub_profile_features,
-            self.kernel_size_sub_profile_features,
-            stride=self.stride_sub_profile_features,
-            padding=self.padding_sub_profile_features)
-
-        self.leaky_relu_text = nn.LeakyReLU()
-        self.leaky_relu_features = nn.LeakyReLU()
-        self.leaky_relu_user = nn.LeakyReLU()
-
-        _, _, output_length_text = self.calc_conv1d_output_shape(self.batch_size, self.out_channels_text,
-                                                                 self.input_size_text_sub ,self.padding_text,
-                                                                 self.kernel_size_text, self.stride_text)
-        _, _, output_length_comments = self.calc_conv1d_output_shape(self.batch_size, self.out_channels_sub_features,
-                                                                     self.input_size_sub_features,
-                                                                     self.padding_sub_features,
-                                                                     self.kernel_size_sub_features,
-                                                                     self.stride_sub_features)
+        # calculate the output length of the convolutions for the definition of the linear layers dimensions
+        _, _, output_length_text = self.calc_conv1d_output_shape(self.batch_size, init_conv1d_text.out_channels,
+                                                                 input_size_text_sub, init_conv1d_text.padding,
+                                                                 init_conv1d_text.kernel_size, init_conv1d_text.stride)
+        _, _, output_length_comments = self.calc_conv1d_output_shape(self.batch_size,
+                                                                     init_conv1d_sub_features.out_channels,
+                                                                     input_size_sub_features,
+                                                                     init_conv1d_sub_features.padding,
+                                                                     init_conv1d_sub_features.kernel_size,
+                                                                     init_conv1d_sub_features.stride)
         _, _, output_length_users = self.calc_conv1d_output_shape(self.batch_size,
-                                                                  self.out_channels_sub_profile_features,
-                                                                  self.input_size_sub_profile_features ,
-                                                                  self.padding_sub_profile_features,
-                                                                  self.kernel_size_sub_profile_features,
-                                                                  self.stride_sub_profile_features)
+                                                                  init_conv1d_sub_profile_features.out_channels,
+                                                                  input_size_sub_profile_features,
+                                                                  init_conv1d_sub_profile_features.padding,
+                                                                  init_conv1d_sub_profile_features.kernel_size,
+                                                                  init_conv1d_sub_profile_features.stride)
 
-        self.branch_hidden_rep_len = self.hidden_size_text + self.hidden_size_comments + self.hidden_size_users + \
-                                     output_length_text*self.out_channels_text + \
-                                     output_length_comments*self.out_channels_sub_features + \
-                                     output_length_users*self.out_channels_sub_profile_features
+        self.branch_hidden_rep_len = self.init_lstm_text.hidden_size + self.init_lstm_comments.hidden_size + \
+                                     self.init_lstm_users.hidden_size + \
+                                     output_length_text*init_conv1d_text.out_channels + \
+                                     output_length_comments*init_conv1d_sub_features.out_channels + \
+                                     output_length_users*init_conv1d_sub_profile_features.out_channels
+
         # number of labels - binary label 1/0 is event delta in branch discussion or not.
         self.num_labels = num_labels
+
+        # dropout regularization
+        self.droput_prior_fc1 = nn.Dropout(fc1_dropout)
+        self.droput_prior_fc2 = nn.Dropout(fc2_dropout)
 
         # linear output layers which projects back to tag space
         self.branch_hidden_to_linear_fc1 = nn.Linear(self.branch_hidden_rep_len, first_linear_reduction)
         self.fc2 = nn.Linear(first_linear_reduction, second_linear_reduction)
         self.fc3_to_label = nn.Linear(second_linear_reduction, self.num_labels)
 
+    def create_lstm_layer(self, input_size, hidden_size, num_layers, batch_first):
+        """
+        initialize LSTM layer with given argumnets
+        input_size: embedding dimension or feature vector dimension
+        hidden_size: The number of features in the hidden state `h`
+        num_layers: number of lstm layers
+        batch_first: True if batch dimension is first
+        :return: lstm layer
+        """
+        lstm_layer = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=batch_first)
+
+        return lstm_layer
+
+    def create_conv1d_layer(self, in_channels, out_channels, kernel_size, stride, padding):
+        """
+        initialize conv1d layer with given argumnets
+        in_channels: number of channels in the input
+        out_channels: number of channels produced by the convolution (number of filters / kernels)
+        kernel_size: sliding window dimension
+        stride: step size of kernel
+        padding: zero padding added to both sides of the input
+        :return: conv1d layer
+        """
+        conv1d_layer = nn.Conv1d(in_channels, out_channels, kernel_size, stride=stride, padding=padding)
+
+        return conv1d_layer
+
     def forward(self, x):
         """
         this method performs all of the model logic and outputs the prediction
         :param x: [self.branch_comments_embedded_text_tensor[index], self.branch_comments_features_tensor[index],
-        # self.branch_comments_user_profiles_tensor[index],
-        # self.submission_data_dict[self.branch_submission_dict[index][0]] = [submission text, submission features,
-        # submitter profile features], self.branch_submission_dict[index][1]] = [branch features]
-        :return:
+                   self.branch_comments_user_profiles_tensor[index],
+                   self.submission_data_dict[self.branch_submission_dict[index][0]] = [submission text, submission
+                   features, submitter profile features], self.branch_submission_dict[index][1] = [branch features],
+                   self.branches_lengths[index]]
+        :return: prediction on x
         """
-
+        # TODO: check if another indexation is needed cuz of tensor wrap in get item
+        # TODO: check how batch is handled
         # divide input in a comprehensive way
         branch_comments_embedded_text = x[0]
         branch_comment_features_tensor = x[1]
@@ -206,27 +168,30 @@ class DeltaModel(nn.Module):
         submission_features = x[3][1]
         submitter_profile_features = x[3][2]
         branch_features_list = x[4]
+        branches_lengths = x[5]
         # TODO: FIX ACTUAL SIZES batch-> x[0] maybe better
         batch_size, seq_len, _ = branch_comments_embedded_text.size()
-        # TODO: different parameter batch size than self.batch size?
+
         # initialize hidden between forward runs
-        self.hidden_text = self.init_hidden(self.num_layers_text, batch_size, self.hidden_size_text)
-        self.hidden_users = self.init_hidden(self.num_layers_users, batch_size, self.hidden_size_comments)
-        self.hidden_comments = self.init_hidden(self.num_layers_comments, batch_size, self.hidden_size_users)
+        self.hidden_text = self.init_hidden(self.init_lstm_text.num_layers, batch_size,
+                                            self.init_lstm_text.hidden_size)
+        self.hidden_comments = self.init_hidden(self.init_lstm_comments.num_layers, batch_size,
+                                                self.init_lstm_comments.hidden_size)
+        self.hidden_users = self.init_hidden(self.init_lstm_users.num_layers, batch_size,
+                                             self.init_lstm_users.hidden_size)
 
         # concatenate submission features and branch features as the convolution conv_sub_features input
         submission_branch_concat = tr.cat((submission_features, branch_features_list), 1)
-        # TODO UNDERSTAND HOW TO GET BATCH SEQUENCES LENGTHS, can it be in the forward input?
 
         # pack_padded_sequence so that padded items in the sequence won't be shown to the LSTM, run the LSTM and unpack
-        out_lstm_text = self.run_lstm_padded_packed(branch_comments_embedded_text, branch_comments_embedded_text_lengths
+        out_lstm_text = self.run_lstm_padded_packed(branch_comments_embedded_text, branches_lengths
                                                     , 'text')
 
         out_lstm_comments = self.run_lstm_padded_packed(branch_comment_features_tensor,
-                                                        branch_comment_features_tensor_lengths, 'comments')
+                                                        branches_lengths, 'comments')
 
         out_lstm_users = self.run_lstm_padded_packed(branch_comments_user_profiles_tensor,
-                                                     branch_comments_user_profiles_tensor_lengths, 'users')
+                                                     branches_lengths, 'users')
 
         # run through convolutions and activation functions
         out_sub_text = self.leaky_relu_text(self.conv_sub_text(submission_embedded_text))
@@ -242,7 +207,9 @@ class DeltaModel(nn.Module):
                                     out_sub_user), 1)
 
         # run through linear layers to get to label dimension
-        output = self.branch_hidden_to_linear_fc1(branch_hidden_rep)
+        output = self.droput_prior_fc1(branch_hidden_rep)
+        output = self.branch_hidden_to_linear_fc1(output)
+        output = self.droput_prior_fc2(output)
         output = self.fc2(output)
         prediction = self.fc3_to_label(output)
 
@@ -299,16 +266,9 @@ class DeltaModel(nn.Module):
         # undo the packing operation
         out_lstm, _ = tr.nn.utils.rnn.pad_packed_sequence(out_lstm, batch_first=True)
 
-        # TODO: PROCESS LSTM OUTPUT DIMENSIONS:
-        # # ---------------------
-        # # 3. Project to tag space
-        # # Dim transformation: (batch_size, seq_len, nb_lstm_units) -> (batch_size * seq_len, nb_lstm_units)
-        #
-        # # this one is a bit tricky as well. First we need to reshape the data so it goes into the linear layer
         # TODO: it supposed to connect if the tensor indexes are not continuous - check if packed padded did something
         # TODO: that needs this kind of fix
         # out_lstm = out_lstm.contiguous()
-        # out_lstm = out_lstm.view(-1, out_lstm.shape[2])
         # TODO: ensure lstm[-1] is correct
         return out_lstm[-1]
 
