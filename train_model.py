@@ -62,7 +62,7 @@ class TrainModel:
 
         # create data loaders
         self.train_loader = self.create_data_loader(self.train_dataset, self.batch_size)
-        self.test_loader =  self.create_data_loader((self.test_dataset, self.batch_size)
+        self.test_loader =  self.create_data_loader(self.test_dataset, self.batch_size)
 
 
     def create_dataset(self, data):
@@ -92,21 +92,25 @@ class TrainModel:
         :return:
         """
 
+        self.model.train()
+
         #device = tr.device("cuda" if tr.cuda.is_available() else "cpu")
 
         for epoch in range(self.num_epochs):
+            # TODO: if want to send to test in each epoch need to do again self.model.train()
             for i, (data_points, labels) in enumerate(self.train_loader):
-                # -1 so last batch will fit the size
-                data_points = Variable(data_points.view(-1, 28*28))
-                labels = Variable(labels)
 
                 # initialize gradient so only current batch will be summed and then backward
                 self.optimizer.zero_grad()
+
                 # forward
                 outputs = self.model(data_points)
                 # TODO: understand impact of packed padded to loss, like function loss in model.py
+                # calculate loss
                 loss = self.criterion(outputs, labels)
+                # calculate gradients
                 loss.backward()
+                # update parameters : tensor - learning_rate*gradient
                 self.optimizer.step()
 
                 if (i+1) % 100 ==0:
@@ -119,20 +123,23 @@ class TrainModel:
         test model on test data calculate accuracy
         :return:
         """
+        # doesn't save history for backwards, turns off dropouts
+        self.model.eval()
 
         correct = 0
         total = 0
         for data_points, labels in self.test_loader:
-            labels = Variable(labels.view(-1, 28*28))
+
             outputs = self.model(data_points)
+            # TODO: take sigmoid output and round , correct following row:
             _, predicted = tr.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum()
-            break
         print('Accuracy of the model on the 10000 test images: %d %%' % (100 * correct / total))
-
+        # TODO: add AUC
         # save the model
         tr.save(self.model.state_dict(), 'model.pkl')
+
 
 def main():
 
@@ -161,6 +168,8 @@ def main():
                 branch_deltas_data_dict_test
 
     # define hyper parameters of learning phase
+    # TODO: maybe it needs one value as input so replace softmax with sigmoid, and finish linear in dimension of 1
+    # TODO: CE with LOGIT
     criterion = nn.BCELoss()
     learning_rate = 0.01
     batch_size = 128

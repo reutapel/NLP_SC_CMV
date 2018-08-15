@@ -2,8 +2,9 @@ import torch as tr
 import torch.nn as nn
 from torch.nn import functional as F
 import math
-
 # TODO: add batch normalization
+
+
 class DeltaModel(nn.Module):
     """
     A deep learning model class with the following logic of taking 3 different sectors of signals in data for predicting
@@ -161,7 +162,7 @@ class DeltaModel(nn.Module):
         # TODO: check if another indexation is needed cuz of tensor wrap in get item
         # TODO: check how batch is handled
         # divide input in a comprehensive way
-        branch_comments_embedded_text = x[0]
+        branch_comments_embedded_text = x[:, 0]
         branch_comment_features_tensor = x[1]
         branch_comments_user_profiles_tensor = x[2]
         submission_embedded_text = x[3][0]
@@ -183,6 +184,8 @@ class DeltaModel(nn.Module):
         # concatenate submission features and branch features as the convolution conv_sub_features input
         submission_branch_concat = tr.cat((submission_features, branch_features_list), 1)
 
+        # TODO: sort sequences by length and get length by input that is a shuffled batch
+
         # pack_padded_sequence so that padded items in the sequence won't be shown to the LSTM, run the LSTM and unpack
         out_lstm_text = self.run_lstm_padded_packed(branch_comments_embedded_text, branches_lengths
                                                     , 'text')
@@ -198,9 +201,10 @@ class DeltaModel(nn.Module):
         out_sub_features = self.leaky_relu_features(self.conv_sub_features(submission_branch_concat))
         out_sub_user = self.leaky_relu_user(self.conv_sub_user(submitter_profile_features))
 
-        out_sub_text = out_sub_text.view(-1)
-        out_sub_features = out_sub_features.view(-1)
-        out_sub_user = out_sub_user.view(-1)
+        #TODO: chack batch flatten is correct in dimensions
+        out_sub_text = out_sub_text.view(out_sub_text.size(0), -1)
+        out_sub_features = out_sub_features.view(out_sub_text.size(0), -1)
+        out_sub_user = out_sub_user.view(out_sub_text.size(0), -1)
 
         # concatenate all LSTMs and convolutions outputs as input for final linear and softmax layer
         branch_hidden_rep = tr.cat((out_lstm_text, out_sub_text, out_lstm_comments, out_sub_features, out_lstm_users,
@@ -216,9 +220,6 @@ class DeltaModel(nn.Module):
         # softmax
         prediction = F.log_softmax(prediction, dim=1)
 
-        # reshape for mental sanity so we're back to (batch_size, seq_len, nb_tags)
-        prediction = prediction.view(batch_size, seq_len, self.num_labels)
-
         return prediction
 
     def init_hidden(self, lstm_layers, batch_size, lstm_units):
@@ -230,6 +231,7 @@ class DeltaModel(nn.Module):
         :return:
         """
         # the weights are of the form (nb_lstm_layers, batch_size, nb_lstm_units)
+        # TODO: check if batch first = true means that even here it is first
         hidden_h = tr.randn(lstm_layers, batch_size, lstm_units)
         hidden_c = tr.randn(lstm_layers, batch_size, lstm_units)
 
@@ -285,7 +287,7 @@ class DeltaModel(nn.Module):
         :param dilation: gap between kernels
         :return:
         """
-
+        # TODO: check that L_in is really input size
         length_out_seq = math.floor(((input_size+2*padding-dilation*(kernel_size-1)-1)/stride)+1)
 
         return batch_size, out_channels, length_out_seq
