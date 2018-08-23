@@ -33,7 +33,7 @@ class DeltaModel(nn.Module):
         """
         super(DeltaModel, self).__init__()
         # check if gpu is available
-        self.hparams.on_gpu = tr.cuda.is_available()
+        # self.hparams.on_gpu = tr.cuda.is_available()
 
         self.init_lstm_text = init_lstm_text
         self.init_lstm_comments = init_lstm_comments
@@ -84,16 +84,16 @@ class DeltaModel(nn.Module):
         self.leaky_relu_user = nn.LeakyReLU(init_conv1d_sub_profile_features.leakyRelu)
 
         # calculate the output length of the convolutions for the definition of the linear layers dimensions
-        _, _, output_length_text = self.calc_conv1d_output_shape(self.batch_size, init_conv1d_text.out_channels,
+        _, _, output_length_text = self.calc_conv1d_output_shape(batch_size, init_conv1d_text.out_channels,
                                                                  input_size_text_sub, init_conv1d_text.padding,
                                                                  init_conv1d_text.kernel_size, init_conv1d_text.stride)
-        _, _, output_length_comments = self.calc_conv1d_output_shape(self.batch_size,
+        _, _, output_length_comments = self.calc_conv1d_output_shape(batch_size,
                                                                      init_conv1d_sub_features.out_channels,
                                                                      input_size_sub_features,
                                                                      init_conv1d_sub_features.padding,
                                                                      init_conv1d_sub_features.kernel_size,
                                                                      init_conv1d_sub_features.stride)
-        _, _, output_length_users = self.calc_conv1d_output_shape(self.batch_size,
+        _, _, output_length_users = self.calc_conv1d_output_shape(batch_size,
                                                                   init_conv1d_sub_profile_features.out_channels,
                                                                   input_size_sub_profile_features,
                                                                   init_conv1d_sub_profile_features.padding,
@@ -116,7 +116,9 @@ class DeltaModel(nn.Module):
         # linear output layers which projects back to tag space
         self.branch_hidden_to_linear_fc1 = nn.Linear(self.branch_hidden_rep_len, first_linear_reduction)
         self.fc2 = nn.Linear(first_linear_reduction, second_linear_reduction)
-        self.fc3_to_label = nn.Linear(second_linear_reduction, self.num_labels)
+        self.fc3_to_label = nn.Linear(second_linear_reduction, 1)
+
+        # self.activation = nn.Softmax(dim=1)
 
     def create_lstm_layer(self, input_size, hidden_size, num_layers, batch_first):
         """
@@ -159,18 +161,17 @@ class DeltaModel(nn.Module):
                    self.branches_lengths[index]]
         :return: prediction on x
         """
-        # TODO: check if another indexation is needed cuz of tensor wrap in get item
-        # TODO: check how batch is handled
-        # divide input in a comprehensive way
-        branch_comments_embedded_text = x[:, 0]
-        branch_comment_features_tensor = x[1]
-        branch_comments_user_profiles_tensor = x[2]
-        submission_embedded_text = x[3][0]
-        submission_features = x[3][1]
-        submitter_profile_features = x[3][2]
-        branch_features_list = x[4]
-        branches_lengths = x[5]
-        # TODO: FIX ACTUAL SIZES batch-> x[0] maybe better
+
+        print("forward pass")
+        # divide input in a comprehensive way, sort batch by lengths
+        branch_comments_embedded_text, branches_lengths, sorted_idx = self.sort_batch(x[0], x[7])
+        branch_comment_features_tensor, _, _ = self.sort_batch(x[1], x[7])
+        branch_comments_user_profiles_tensor, _, _ = self.sort_batch(x[2], x[7])
+        submission_embedded_text, _, _ = self.sort_batch(x[3], x[7])
+        submission_features, _, _ = self.sort_batch(x[4], x[7])
+        submitter_profile_features, _, _ = self.sort_batch(x[5], x[7])
+        branch_features_list, _, _ = self.sort_batch(x[6], x[7])
+
         batch_size, seq_len, _ = branch_comments_embedded_text.size()
 
         # initialize hidden between forward runs
@@ -184,8 +185,6 @@ class DeltaModel(nn.Module):
         # concatenate submission features and branch features as the convolution conv_sub_features input
         submission_branch_concat = tr.cat((submission_features, branch_features_list), 1)
 
-        # TODO: sort sequences by length and get length by input that is a shuffled batch
-
         # pack_padded_sequence so that padded items in the sequence won't be shown to the LSTM, run the LSTM and unpack
         out_lstm_text = self.run_lstm_padded_packed(branch_comments_embedded_text, branches_lengths
                                                     , 'text')
@@ -196,18 +195,29 @@ class DeltaModel(nn.Module):
         out_lstm_users = self.run_lstm_padded_packed(branch_comments_user_profiles_tensor,
                                                      branches_lengths, 'users')
 
+        # reshape data for convolutions to add middle dimension of 1 input channels
+        submission_embedded_text = submission_embedded_text.reshape(batch_size, 1, -1)
+        submission_branch_concat = submission_branch_concat.reshape(batch_size, 1, -1)
+        submitter_profile_features = submitter_profile_features.reshape(batch_size, 1, -1)
+
         # run through convolutions and activation functions
         out_sub_text = self.leaky_relu_text(self.conv_sub_text(submission_embedded_text))
         out_sub_features = self.leaky_relu_features(self.conv_sub_features(submission_branch_concat))
         out_sub_user = self.leaky_relu_user(self.conv_sub_user(submitter_profile_features))
 
-        #TODO: chack batch flatten is correct in dimensions
+        # flatten convolutional's feature map to one dimension of all kernels
         out_sub_text = out_sub_text.view(out_sub_text.size(0), -1)
-        out_sub_features = out_sub_features.view(out_sub_text.size(0), -1)
-        out_sub_user = out_sub_user.view(out_sub_text.size(0), -1)
+        out_sub_features = out_sub_features.view(out_sub_features.size(0), -1)
+        out_sub_user = out_sub_user.view(out_sub_user.size(0), -1)
 
         # concatenate all LSTMs and convolutions outputs as input for final linear and softmax layer
-        branch_hidden_rep = tr.cat((out_lstm_text, out_sub_text, out_lstm_comments, out_sub_features, out_lstm_users,
+        # if last batch holds one data point
+        if out_sub_text.shape[0] == 1:
+            branch_hidden_rep = tr.cat(
+                (out_lstm_text, out_sub_text.view(-1), out_lstm_comments, out_sub_features.view(-1), out_lstm_users,
+                 out_sub_user.view(-1)))
+        else:
+            branch_hidden_rep = tr.cat((out_lstm_text, out_sub_text, out_lstm_comments, out_sub_features, out_lstm_users,
                                     out_sub_user), 1)
 
         # run through linear layers to get to label dimension
@@ -217,10 +227,10 @@ class DeltaModel(nn.Module):
         output = self.fc2(output)
         prediction = self.fc3_to_label(output)
 
-        # softmax
-        prediction = F.log_softmax(prediction, dim=1)
+        # # activation normalization for loss
+        # prediction = self.activation(prediction)
 
-        return prediction
+        return prediction, sorted_idx, batch_size
 
     def init_hidden(self, lstm_layers, batch_size, lstm_units):
         """
@@ -235,9 +245,9 @@ class DeltaModel(nn.Module):
         hidden_h = tr.randn(lstm_layers, batch_size, lstm_units)
         hidden_c = tr.randn(lstm_layers, batch_size, lstm_units)
 
-        if self.hparams.on_gpu:
-            hidden_h = hidden_h.cuda()
-            hidden_c = hidden_c.cuda()
+        # if self.hparams.on_gpu:
+        #     hidden_h = hidden_h.cuda()
+        #     hidden_c = hidden_c.cuda()
 
         hidden_h = hidden_h
         hidden_c = hidden_c
@@ -268,11 +278,18 @@ class DeltaModel(nn.Module):
         # undo the packing operation
         out_lstm, _ = tr.nn.utils.rnn.pad_packed_sequence(out_lstm, batch_first=True)
 
-        # TODO: it supposed to connect if the tensor indexes are not continuous - check if packed padded did something
-        # TODO: that needs this kind of fix
-        # out_lstm = out_lstm.contiguous()
-        # TODO: ensure lstm[-1] is correct
-        return out_lstm[-1]
+        # TODO: understand if manual batching affects learning: gradients, loss...
+        # take last hidden output for every sequence
+        last_outputs = [(idx, i.item() - 1) for idx, i in enumerate(input_lengths)]
+        first = 1
+        for last_hidden_seq in last_outputs:
+            if first:
+                first = 0
+                last_hidden_batch = out_lstm[last_hidden_seq]
+            else:
+                last_hidden_batch = tr.stack((last_hidden_batch, out_lstm[last_hidden_seq]),0)
+
+        return last_hidden_batch
 
     def calc_conv1d_output_shape(self, batch_size, out_channels, input_size, padding, kernel_size, stride, dilation=1):
         """
@@ -287,8 +304,21 @@ class DeltaModel(nn.Module):
         :param dilation: gap between kernels
         :return:
         """
-        # TODO: check that L_in is really input size
+
         length_out_seq = math.floor(((input_size+2*padding-dilation*(kernel_size-1)-1)/stride)+1)
 
         return batch_size, out_channels, length_out_seq
+
+    def sort_batch(self, batch_input, length):
+
+        batch_size = batch_input.size(0)  # get size of batch
+        sorted_length, sorted_idx = length.sort()  # sort the length of sequence samples
+        reverse_idx = tr.linspace(batch_size - 1, 0, batch_size).long()
+        # reverse_idx = reverse_idx.cuda(GPU_ID)
+
+        sorted_length = sorted_length[reverse_idx]  # for descending order
+        sorted_idx = sorted_idx[reverse_idx]
+        sorted_data = batch_input[sorted_idx]  # sorted in descending order
+
+        return sorted_data, sorted_length, sorted_idx
 

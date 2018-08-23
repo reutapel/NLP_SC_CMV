@@ -11,7 +11,7 @@ class CustomDataset(dt.Dataset):
     """
     Class for handling data before modeling, pre-process and loading
     """
-    # TODO: convert feature vectors to tensors
+    # TODO: REUT: df columns should be com1, com2 ... important for tensor ordering
     def __init__(self, branch_comments_embedded_text_df, branch_comments_features_df, branch_comments_user_profiles_df,
                  branch_submission_dict, submission_data_dict, branch_deltas_data_dict, branches_lengths_list):
         """
@@ -51,9 +51,12 @@ class CustomDataset(dt.Dataset):
 
         x = [self.branch_comments_embedded_text_tensor[index], self.branch_comments_features_tensor[index],
              self.branch_comments_user_profiles_tensor[index],
-             self.submission_data_dict[self.branch_submission_dict[index][0]], self.branch_submission_dict[index][1],
+             tr.Tensor(self.submission_data_dict[self.branch_submission_dict[index][0]][0]),
+             tr.Tensor(self.submission_data_dict[self.branch_submission_dict[index][0]][1]),
+             tr.Tensor(self.submission_data_dict[self.branch_submission_dict[index][0]][2]),
+             tr.Tensor(self.branch_submission_dict[index][1]),
              self.branches_lengths[index]]
-        y = self.branch_deltas_data_dict[index]
+        y = self.branch_deltas_data_dict[index][0]
         return x, y
 
     def __len__(self):
@@ -76,14 +79,14 @@ class CustomDataset(dt.Dataset):
 
         # if values of df is numbers
         if isinstance(df.iloc[0, 0], numbers.Number):
-            print("new tensor shape is", df_rows_num, ",", df_columns_num)
+            # print("new tensor shape is", df_rows_num, ",", df_columns_num)
             return tr.Tensor(df.values)
         # if values of df are vectors
         else:
             df_value_length = len(df.iloc[0, 0])
             df_content = df.values
             tensor = tr.Tensor([[column for column in row] for row in df_content])
-            print("new tensor shape is", df_rows_num, ",", df_columns_num, ",", df_value_length)
+            # print("new tensor shape is", df_rows_num, ",", df_columns_num, ",", df_value_length)
 
             return tensor
 

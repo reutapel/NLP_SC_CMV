@@ -223,23 +223,10 @@
 #     func2(*data)
 #
 #     return
-import pandas as pd
-
-df = pd.DataFrame({'col1':[1,2,3,4,5], 'col2':list('abcab'),  'col3':list('ababb')})
-# cat_columns = df.select_dtypes(['category']).columns
-# df[cat_columns] = df[cat_columns].apply(lambda x: x.cat.codes)
-# print(df)
-y=list([1, 1, 0, 1, 0])
-
-for col_name in list(set(df.columns).difference(set("injury_savirity"))):
-    if(df[col_name].dtype == 'object'):
-        df[col_name]= df[col_name].astype('category')
-        df[col_name] = df[col_name].cat.codes
 
 # from sklearn.ensemble import RandomForestClassifier
 # clf = RandomForestClassifier(max_depth=2, random_state=0)
 # clf.fit(df, y)
-print(df[~'col1'])
 
 # print(df)
 # for col in df.columns:
@@ -249,3 +236,36 @@ print(df[~'col1'])
 #
 # func('who', train_data)
 
+import torch as tr
+import pandas as pd
+
+
+def sort_batch(x, length):
+
+    batch_size = x.size(0)                       # get size of batch
+    sorted_length, sorted_idx = length.sort()  # sort the length of sequence samples
+    reverse_idx = tr.linspace(batch_size-1,0,batch_size).long()
+    # reverse_idx = reverse_idx.cuda(GPU_ID)
+
+    sorted_length = sorted_length[reverse_idx]    # for descending order
+    sorted_idx = sorted_idx[reverse_idx]
+    sorted_data = x[sorted_idx]                 # sorted in descending order
+
+    return sorted_data, sorted_length, sorted_idx
+
+
+text = {'col1': [[1, 2], [3, 4], [5, 6]], 'col2': [[7, 8], [9, 1], [1, 5]], 'col3': [[0, 0], [1, 6], [5, 5]],
+        'col4': [[0, 0], [6, 8], [0, 0]]}
+df = pd.DataFrame(data=text)
+df_value_length = len(df.iloc[0, 0])
+df_content = df.values
+tensor = tr.Tensor([[column for column in row] for row in df_content])
+lengths = tr.Tensor([2,4,3])
+
+x = tr.randn(10)
+y, ind = tr.sort(x, 0)
+unsorted = y.new(*y.size())
+unsorted.scatter_(0, ind, y)
+# print((x - unsorted).abs().max())
+
+sort_batch(tensor,lengths)
