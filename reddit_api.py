@@ -160,7 +160,7 @@ class ApiConnection:
     def get_deltas_manual(self, all_submissions_comments):
 
         delta_comments_depth_zero = pd.DataFrame(columns=['comment_id', 'parent_id'])
-        # OP_deltas_comments_ids: {submission_id: [comments that gor delta]}
+        # OP_deltas_comments_ids: {submission_id: [comments that got delta]}
         OP_deltas_comments_ids = defaultdict(list)
         delta_tokens = ['&amp;#8710;', '&#8710;', '&#916;', '&amp;916;', '∆', '!delta', 'Δ', '&delta;']
         num_of_deltas = 0

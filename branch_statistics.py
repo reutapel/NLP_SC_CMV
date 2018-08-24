@@ -85,7 +85,7 @@ class CalculateStatistics:
             pd.read_csv(os.path.join(data_directory,
                                      'all_submissions_comments_with_label_all_deltalog_final_with_branches.csv'),
                         usecols=['branch_id', 'comment_id', 'comment_real_depth', 'delta', 'submission_id',
-                                 'comment_author', 'comment_is_submitter'])
+                                 'comment_author', 'comment_is_submitter', 'comment_body'])
         print('shape with all comments', self.branch_comments_info_df.shape)
         number_of_comments = self.branch_comments_info_df.comment_id.unique()
         print('number of comments before filter', number_of_comments.shape)

@@ -47,13 +47,15 @@ class CreateFeatures:
         :param int number_of_topics: number_of_topics for topic model feature
         """
 
+        # Load branches data
+        self.branch_numbers_df = pd.read_csv(os.path.join(data_directory, 'branch_numbers_df_fix.csv'))
+
         # Load all relevant data
         units_columns = ['comment_body', 'comment_author', 'submission_author', 'submission_body', 'submission_title',
                          'comment_id', 'parent_id', 'comment_created_utc', 'submission_created_utc', 'submission_id',
                          'branch_id', 'comment_real_depth', 'delta', 'branch_length']
 
         # all the units, with label
-        # TODO: decide if we have units and all data and change the code accordingly
         self.units = pd.read_csv(os.path.join(data_directory, 'comments_label_deltalog_branch_info_small.csv'),
                                  skipinitialspace=True, usecols=units_columns)
         pd.to_numeric(self.units['submission_created_utc'])
@@ -147,6 +149,8 @@ class CreateFeatures:
         print('time to create submission dict: ', time.time() - start_time)
 
         self.number_of_topics = number_of_topics
+
+
 
     def create_submission_submitter_features(self):
         """
