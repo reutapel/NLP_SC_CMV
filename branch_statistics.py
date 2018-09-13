@@ -6,7 +6,7 @@ import numpy as np
 
 base_directory = os.path.abspath(os.curdir)
 data_directory = os.path.join(base_directory, 'data')
-branch_statistics_directory = os.path.join(base_directory, 'branch_statistics')
+branch_statistics_directory = os.path.join(base_directory, 'branch_statistics', 'val_data')
 
 
 def autolabel(rects, ax, rotation):
@@ -76,16 +76,23 @@ class CalculateStatistics:
         :return:
         """
         self.statistics = pd.DataFrame(columns=['mean', 'STD', 'median', 'sum', 'count', 'min', 'max'])
-        self.branch_numbers_df = pd.read_csv(os.path.join(data_directory, 'branch_numbers_df_fix.csv'))
+        self.branch_numbers_df = pd.read_csv(os.path.join(data_directory, 'new_branches_data_after_remove.csv'))
+        self.branch_numbers_df = self.branch_numbers_df[['branch_id', 'branch_length', 'num_delta',
+                                                         'num_comments_after_delta', 'delta_index_in_branch',
+                                                         'submission_id']]
+        self.branch_comments_info_df =\
+            pd.read_csv(os.path.join(data_directory,
+                                     'val_data.csv'),
+                        usecols=['branch_id', 'comment_id', 'comment_real_depth', 'delta', 'submission_id',
+                                 'comment_author', 'comment_is_submitter', 'comment_body'])
+
+        # select relevant branches
+        branches_to_use = self.branch_comments_info_df.branch_id.unique()
+        self.branch_numbers_df = self.branch_numbers_df.loc[self.branch_numbers_df.branch_id.isin(branches_to_use)]
 
         if drop_1_length:
             self.branch_numbers_df = self.branch_numbers_df.loc[(self.branch_numbers_df['branch_length'] > 1) &
                                                                 (self.branch_numbers_df['branch_length'] < 30)]
-        self.branch_comments_info_df =\
-            pd.read_csv(os.path.join(data_directory,
-                                     'all_submissions_comments_with_label_all_deltalog_final_with_branches.csv'),
-                        usecols=['branch_id', 'comment_id', 'comment_real_depth', 'delta', 'submission_id',
-                                 'comment_author', 'comment_is_submitter', 'comment_body'])
         print('shape with all comments', self.branch_comments_info_df.shape)
         number_of_comments = self.branch_comments_info_df.comment_id.unique()
         print('number of comments before filter', number_of_comments.shape)

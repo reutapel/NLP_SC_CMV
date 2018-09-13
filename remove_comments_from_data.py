@@ -277,8 +277,8 @@ class RemoveCommentsFromData:
         :return:
         """
         self.new_comments_data_after_remove.to_csv(os.path.join(data_directory, 'new_comments_data_after_remove.csv'))
-        branch_relevant_info = self.new_branches_data_after_remove['branch_id', 'branch_length', 'num_delta',
-                                                                   'num_comments_after_delta', 'delta_index_in_branch']
+        branch_relevant_info = self.new_branches_data_after_remove[['branch_id', 'branch_length', 'num_delta',
+                                                                   'num_comments_after_delta', 'delta_index_in_branch']]
         join_data = self.new_comments_data_after_remove.merge(branch_relevant_info, on='branch_id')
         join_data = join_data.merge(self.submissions, on='submission_id')
 
@@ -287,10 +287,70 @@ class RemoveCommentsFromData:
         join_data.to_csv(os.path.join(data_directory, 'comments_label_branch_info_after_remove.csv'))
 
 
+def fix_branch_data():
+    new_comments_data_after_remove = pd.read_csv(os.path.join(data_directory, 'new_comments_data_after_remove.csv'))
+    branch_numbers_df = pd.read_csv(os.path.join(data_directory, 'branch_numbers_df_fix.csv'))
+
+    # filter out branches of length 1 and more than 29
+    branch_numbers_df = branch_numbers_df.loc[(branch_numbers_df['branch_length'] > 1) &
+                                              (branch_numbers_df['branch_length'] < 30)]
+    # remove this branch because there is no really a delta
+    branch_numbers_df = branch_numbers_df.loc[branch_numbers_df.branch_id != 24158]
+    # remove this submission because the deltas there seams to be fake, many deltas with the same text
+    branch_numbers_df = branch_numbers_df.loc[branch_numbers_df.submission_id != '6tkjmm']
+    new_branches_data_after_remove = branch_numbers_df.copy()
+    new_branches_data_after_remove = new_branches_data_after_remove.assign(num_comments_removed=0)
+    new_branches_data_after_remove = new_branches_data_after_remove.assign(pct_comments_removed=0.0)
+
+    # get the branches that were deleted
+    branches_new_data = new_comments_data_after_remove['branch_id'].unique().tolist()
+    branches_orig_data = new_branches_data_after_remove['branch_id'].unique().tolist()
+    branches_delta_deleted = np.setdiff1d(branches_orig_data, branches_new_data)
+
+    new_branches_data_after_remove = new_branches_data_after_remove.loc[
+        ~new_branches_data_after_remove.branch_id.isin(branches_delta_deleted)]
+
+    # update the branch length
+    branch_length = new_comments_data_after_remove.groupby(by='branch_id').agg({'comment_id': 'count'})
+    branch_length['branch_id'] = branch_length.index
+    branch_length.columns = ['new_branch_length', 'branch_id']
+    new_branches_data_after_remove = new_branches_data_after_remove.merge(branch_length)
+    new_branches_data_after_remove['num_comments_removed'] = new_branches_data_after_remove['branch_length'] - \
+                                                             new_branches_data_after_remove['new_branch_length']
+    new_branches_data_after_remove['pct_comments_removed'] = new_branches_data_after_remove['num_comments_removed'] / \
+                                                             new_branches_data_after_remove['branch_length']
+
+    # update the delta index and num comments after delta
+    delta_index = new_comments_data_after_remove.loc[new_comments_data_after_remove.delta == 1]
+    delta_index = delta_index[['branch_id', 'comment_real_depth']]
+    delta_index = delta_index.drop_duplicates(subset='branch_id')
+    delta_index.columns = ['branch_id', 'delta_new_index']
+    new_branches_data_after_remove = new_branches_data_after_remove.merge(delta_index, how='left')
+    new_branches_data_after_remove['delta_new_index'] = new_branches_data_after_remove['delta_new_index'] + 1
+    new_branches_data_after_remove['num_comments_after_delta_new'] = new_branches_data_after_remove[
+                                                                         'new_branch_length'] - \
+                                                                     new_branches_data_after_remove['delta_new_index']
+
+    # save data
+    submissions = pd.read_csv(os.path.join(data_directory, 'all_submissions_final.csv'))
+    branch_relevant_info = new_branches_data_after_remove[['branch_id', 'new_branch_length', 'num_delta',
+                                                          'num_comments_after_delta_new', 'delta_index_in_branch']]
+    branch_relevant_info.columns = ['branch_id', 'branch_length', 'num_delta', 'num_comments_after_delta',
+                                    'delta_new_index']
+    new_branches_data_after_remove.to_csv(os.path.join(data_directory, 'new_branches_data_after_remove.csv'))
+    join_data = new_comments_data_after_remove.merge(branch_relevant_info, on='branch_id')
+    join_data = join_data.merge(submissions, on='submission_id')
+
+    join_data = join_data.sort_values(by=['branch_id', 'comment_real_depth'], ascending=[False, True])
+
+    join_data.to_csv(os.path.join(data_directory, 'comments_label_branch_info_after_remove.csv'))
+
+
 def main():
     remove_comments_obj = RemoveCommentsFromData()
     remove_comments_obj.remove_comments_from_data()
     remove_comments_obj.create_final_data()
+    # fix_branch_data()
 
 
 if __name__ == '__main__':

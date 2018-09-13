@@ -14,13 +14,13 @@ from nltk.corpus import stopwords
 from nltk.stem.wordnet import WordNetLemmatizer
 import string
 # import gensim
-from gensim import corpora
+# from gensim import corpora
 # from nltk.stem import PorterStemmer
 # from nltk.tokenize import sent_tokenize, word_tokenize
-from gensim.sklearn_api import ldamodel
-from nltk.sentiment.vader import SentimentIntensityAnalyzer
+# from gensim.sklearn_api import ldamodel
+# from nltk.sentiment.vader import SentimentIntensityAnalyzer
 # from collections import defaultdict
-from sklearn.feature_extraction.text import TfidfVectorizer
+# from sklearn.feature_extraction.text import TfidfVectorizer
 
 
 base_directory = os.path.abspath(os.curdir)
@@ -105,11 +105,11 @@ group_dict = {
 
 def train_test_split():
     branch_comments_info_df = pd.read_csv(
-        os.path.join(data_directory, 'all_submissions_comments_with_label_all_deltalog_final_with_branches.csv'))
+        os.path.join(data_directory, 'comments_label_branch_info_after_remove.csv'))
     submissions = pd.read_csv(os.path.join(data_directory, 'all_submissions_final.csv'))
     branch_comments_info_df = branch_comments_info_df.merge(submissions, on='submission_id')
 
-    branch_numbers_df = pd.read_csv(os.path.join(data_directory, 'branch_numbers_df_fix.csv'))
+    branch_numbers_df = pd.read_csv(os.path.join(data_directory, 'new_branches_data_after_remove.csv'))
     # filter out branches of length 1 and more than 29
     branch_numbers_df = branch_numbers_df.loc[(branch_numbers_df['branch_length'] > 1) &
                                               (branch_numbers_df['branch_length'] < 30)]
@@ -151,31 +151,47 @@ def train_test_split():
     train_submissions = list()
     for group_number in range(1, 16):
         rows_in_group = submission_group.loc[submission_group.group_number == group_number]
-        num_to_sample = math.floor(0.4 * rows_in_group.shape[0])
+        print('group size:', rows_in_group.shape)
+        num_to_sample = math.floor(0.3 * rows_in_group.shape[0])
+        print('num_to_sample:', num_to_sample)
         train_sample = rows_in_group.sample(n=num_to_sample)
         train_submissions += list(train_sample.submission_id.unique())
 
     # get the users in the train submissions
     train_data = branch_comments_info_df.loc[branch_comments_info_df.submission_id.isin(train_submissions)]
-    train_data_users = list(train_data['comment_author'])
-    train_data_users.append(list(train_data['submission_author']))
-    train_data_users = [user for user in train_data_users if str(user) != 'nan']
-    branch_comments_info_df.comment_author = branch_comments_info_df.comment_author.to_string()
-    final_train_data = branch_comments_info_df.loc[
-        branch_comments_info_df.comment_author.isin(train_data_users)]
-    final_train_data = final_train_data.append(branch_comments_info_df.loc[
-        branch_comments_info_df.submission_author.isin(train_data_users)])
-    final_train_data.to_csv(os.path.join(data_directory, 'train_data.csv'))
+    # train_data_users = list(train_data['comment_author'])
+    # train_data_users.append(list(train_data['submission_author']))
+    # train_data_users = [user for user in train_data_users if str(user) != 'nan']
+    # branch_comments_info_df.comment_author = branch_comments_info_df.comment_author.to_string()
+    # final_train_data = branch_comments_info_df.loc[
+    #     branch_comments_info_df.comment_author.isin(train_data_users)]
+    # final_train_data = final_train_data.append(branch_comments_info_df.loc[
+    #     branch_comments_info_df.submission_author.isin(train_data_users)])
+    print('save train data')
+    train_data.to_csv(os.path.join(data_directory, 'train_data.csv'))
 
     # create test and validation data
-    submissions_final_train_data = list(final_train_data['submission_id'])
+    # get the submissions for test data
+    submissions_final_train_data = list(train_data['submission_id'])
     submissions_not_in_train = np.setdiff1d(all_submissions, submissions_final_train_data)
-    num_to_sample = int(math.floor(0.5 * submissions_not_in_train.shape[0]))
-    test_submissions = np.random.choice(submissions_not_in_train, size=num_to_sample)
+    submission_group_not_in_train = submission_group.loc[submission_group.submission_id.isin(submissions_not_in_train)]
+    test_submissions = list()
+    for group_number in range(1, 16):
+        rows_in_group = submission_group_not_in_train.loc[submission_group_not_in_train.group_number == group_number]
+        print('group size:', rows_in_group.shape)
+        num_to_sample = math.floor(0.3 * rows_in_group.shape[0])
+        print('num_to_sample:', num_to_sample)
+        test_sample = rows_in_group.sample(n=num_to_sample)
+        test_submissions += list(test_sample.submission_id.unique())
+
+    # get the users in the test submissions
     test_data = branch_comments_info_df.loc[branch_comments_info_df.submission_id.isin(test_submissions)]
+    print('save test data')
     test_data.to_csv(os.path.join(data_directory, 'test_data.csv'))
+
     val_submissions = np.setdiff1d(submissions_not_in_train, test_submissions)
     val_data = branch_comments_info_df.loc[branch_comments_info_df.submission_id.isin(val_submissions)]
+    print('save val data')
     val_data.to_csv(os.path.join(data_directory, 'val_data.csv'))
 
 
