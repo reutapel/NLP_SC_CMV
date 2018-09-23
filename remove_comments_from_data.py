@@ -563,6 +563,9 @@ class RemoveCommentsFromData:
         :return:
         """
         print("{}: start saving new data".format(time.asctime(time.localtime(time.time()))))
+        # remove branches that all comments were removed
+        self.new_branches_data_after_remove = self.new_branches_data_after_remove.loc[
+            self.new_branches_data_after_remove.branch_length > 0]
         self.new_comments_data_after_remove.to_csv(os.path.join(save_data_directory,
                                                                 'new_comments_data_after_remove.csv'))
         self.new_branches_data_after_remove.to_csv(os.path.join(save_data_directory,
