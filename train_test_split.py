@@ -25,6 +25,7 @@ import string
 
 base_directory = os.path.abspath(os.curdir)
 data_directory = os.path.join(base_directory, 'data')
+save_data_directory = os.path.join(data_directory, 'filter_submissions')
 
 log_directory = os.path.join(base_directory, 'logs')
 LOG_FILENAME = os.path.join(log_directory,
@@ -104,19 +105,11 @@ group_dict = {
 
 
 def train_test_split():
+    # load comments and branches
     branch_comments_info_df = pd.read_csv(
         os.path.join(data_directory, 'comments_label_branch_info_after_remove.csv'))
-    submissions = pd.read_csv(os.path.join(data_directory, 'all_submissions_final.csv'))
-    branch_comments_info_df = branch_comments_info_df.merge(submissions, on='submission_id')
-
     branch_numbers_df = pd.read_csv(os.path.join(data_directory, 'new_branches_data_after_remove.csv'))
-    # filter out branches of length 1 and more than 29
-    branch_numbers_df = branch_numbers_df.loc[(branch_numbers_df['branch_length'] > 1) &
-                                              (branch_numbers_df['branch_length'] < 30)]
-    # remove this branch because there is no really a delta
-    branch_numbers_df = branch_numbers_df.loc[branch_numbers_df.branch_id != 24158]
-    # remove this submission because the deltas there seams to be fake, many deltas with the same text
-    branch_numbers_df = branch_numbers_df.loc[branch_numbers_df.submission_id != '6tkjmm']
+
     # assign branch_length_group:
     branch_numbers_df['branch_length_group'] = branch_numbers_df.apply(branch_group_size, axis=1)
 
