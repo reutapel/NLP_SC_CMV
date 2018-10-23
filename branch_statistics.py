@@ -4,20 +4,22 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+data_set = 'val_data'
 base_directory = os.path.abspath(os.curdir)
 data_directory = os.path.join(base_directory, 'data')
 save_data_directory = os.path.join(data_directory, 'filter_submissions')
-branch_statistics_directory = os.path.join(base_directory, 'branch_statistics', 'test_data')
+branch_statistics_directory = os.path.join(base_directory, 'branch_statistics', data_set)
 
 
-def autolabel(rects, ax, rotation):
+def autolabel(rects, ax, rotation, max_height):
     """
     Attach a text label above each bar displaying its height
     """
     for rect in rects:
         height = rect.get_height()
-        ax.text(rect.get_x() + rect.get_width() / 2, height + 5, height, ha='center', va='bottom',
-                rotation=rotation)
+        if height > 0.0:
+            ax.text(rect.get_x() + rect.get_width() / 2, height + max_height * 0.01, int(height), ha='center', va='bottom',
+                    rotation=rotation)
 
 
 def create_chart_bars(title, x, y, xlabel, ylabel, y2=None, x2=None, is_split=False):
@@ -47,12 +49,17 @@ def create_chart_bars(title, x, y, xlabel, ylabel, y2=None, x2=None, is_split=Fa
         rects1 = ax.bar(x, y, width, color='b')
         rects2 = ax.bar(x2 + width, y2, width, color='y')
         ax.legend((rects1[0], rects2[0]), ('no_delta', 'delta'))
-        autolabel(rects1, ax, rotation)
-        autolabel(rects2, ax, rotation)
+        max_height_1 = max(y)
+        max_height_2 = max(y2)
+        max_height = max(max_height_1, max_height_2)
+        autolabel(rects1, ax, rotation, max_height)
+        autolabel(rects2, ax, rotation, max_height)
+
     else:
         plt.bar(x, y)
         rects = ax.patches
-        autolabel(rects, ax, rotation)
+        max_height = max(y)
+        autolabel(rects, ax, rotation, max_height)
 
     # add some text for labels, title and axes ticks
     plt.legend()
@@ -83,7 +90,7 @@ class CalculateStatistics:
                                                          'num_comments_after_delta', 'delta_index_in_branch',
                                                          'submission_id']]
         self.branch_comments_info_df =\
-            pd.read_csv(os.path.join(save_data_directory, 'new_comments_data_after_remove.csv'),
+            pd.read_csv(os.path.join(save_data_directory, data_set + '.csv'),
                         usecols=['branch_id', 'comment_id', 'comment_real_depth', 'delta', 'submission_id',
                                  'comment_author', 'comment_is_submitter', 'comment_body'])
 
@@ -91,9 +98,9 @@ class CalculateStatistics:
         branches_to_use = self.branch_comments_info_df.branch_id.unique()
         self.branch_numbers_df = self.branch_numbers_df.loc[self.branch_numbers_df.branch_id.isin(branches_to_use)]
 
-        # if drop_1_length:
-        #     self.branch_numbers_df = self.branch_numbers_df.loc[(self.branch_numbers_df['branch_length'] > 1) &
-        #                                                         (self.branch_numbers_df['branch_length'] < 30)]
+        if drop_1_length:
+            self.branch_numbers_df = self.branch_numbers_df.loc[(self.branch_numbers_df['branch_length'] > 1)]
+                                                                # & (self.branch_numbers_df['branch_length'] < 30)]
         print('shape with all comments', self.branch_comments_info_df.shape)
         number_of_comments = self.branch_comments_info_df.comment_id.unique()
         print('number of comments before filter', number_of_comments.shape)
@@ -155,8 +162,8 @@ class CalculateStatistics:
         number_of_bins = int(np.nanmax(statistics_column[0][0].unique())) + 1
         # start_bins = int(np.nanmin(statistics_column[0][0].unique()))
         if statistics_column_name in ['branch_length', 'num_comments_after_delta', 'delta_index_in_branch']\
-                and number_of_bins > 20 and not per_branch_length:
-            number_of_bins = 20
+                and number_of_bins > 50 and not per_branch_length:
+            number_of_bins = 50
 
         data_to_plot = pd.DataFrame(statistics_column[0][0], columns=[statistics_column_name]).assign(count=1)
         data_to_plot = data_to_plot.loc[data_to_plot[statistics_column_name] <= number_of_bins]

@@ -5,18 +5,29 @@ import time
 import sys
 import joblib
 import pandas as pd
+import os
 
-# TODO: CHENGE DIRECTORIES TO NEW REPOSITORY AND SIMPLY TO BASE DIRECTORY
-# TODO: CHENGE OBJECT TO FIT, TRANSFORM
+
+base_directory = os.path.abspath(os.curdir)
+data_directory = os.path.join(base_directory, 'data')
+
+# TODO: CHANGE DIRECTORIES TO NEW REPOSITORY AND SIMPLY TO BASE DIRECTORY
+# TODO: CHANGE OBJECT TO FIT, TRANSFORM
+
+
 class Doc2Vec:
     """
     this class creates a model that represent a document with an embedded vector
     """
 
-    def __init__(self, fname, linux, vector_size=50, min_count=2, epochs=20):
+    def __init__(self, fname, linux, use_file=True, data=None, vector_size=50, min_count=2, epochs=20):
         """
         create a doc2vec model object, corpus, vocabulary and train the model
         :param fname: text file name
+        :param bool linux: flag
+        :param bool use_file: if using file of data or data frame. if file, fname should be given,
+                                else- data frame should be given
+        :param data: pandas series with train data - the text to train the model with
         :param vector_size: embedded vector length (number of representative words)
         :param min_count: minimum number of occurrences per word for it to be a representative in the vector
         :param epochs: number of iterations over training corpus
@@ -26,54 +37,73 @@ class Doc2Vec:
         self.train_corpus = list()
         self.test_corpus = list()
 
-        new_file = self.prepare_raw_text(fname, linux)
+        if use_file:
+            new_file = self.prepare_raw_text(fname, linux)
 
+            self.train_file = new_file
+            self.test_file = new_file
+        else:
+            self.train_file = None
+            self.test_file = None
 
-        self.train_file = new_file
-        self.test_file = new_file
-        self.voab_len = int()
+        self.vocab_len = int()
+
+        self.use_file = use_file
+        self.train_data = data
 
         # instantiate the model
         self.doc2vec_model = gensim.models.doc2vec.Doc2Vec(vector_size=vector_size, min_count=min_count, epochs=epochs)
         print(time.asctime(time.localtime(time.time())), ": Doc2Vec model created")
 
-        self.create_corpus(self.train_file, self.test_file)
+        self.create_corpus()
         self.build_vocab()
         self.train_doc2vec_model()
 
-    def read_corpus(self, fname, tokens_only=False):
+    def read_corpus(self, tokens_only=False, is_train=True):
         """
         read the file line-by-line, pre-process each line using a simple gensim pre-processing tool (i.e., tokenize text
          into individual words, remove punctuation, set to lowercase, etc), and return a list of words. Note that,
          for a given file (aka corpus), each continuous line constitutes a single document and the length of each line
          (i.e., document) can vary. Also, to train the model, we'll need to associate a tag/number with each document
          of the training corpus. In our case, the tag is simply the zero-based line number
-        :param fname: text file name
-        :param tokens_only: if true, for test with no lebels e.g. doc indexes
+        :param bool tokens_only: if true, for test with no labels e.g. doc indexes
+        :param bool is_train: if using train or test file
         :return:
         """
-
-        with smart_open.smart_open(fname, encoding="iso-8859-1") as f:
-            for i, line in enumerate(f):
+        if not self.use_file:
+            for i, line in self.train_data.iteritems():
                 if tokens_only:
                     yield gensim.utils.simple_preprocess(line)
                 else:
                     # For training data, add tags
                     yield gensim.models.doc2vec.TaggedDocument(gensim.utils.simple_preprocess(line), [i])
 
-    def create_corpus(self, train_file, test_file):
+        else:
+            if is_train:
+                data_file = self.train_file
+            else:
+                data_file = self.test_file
+            with smart_open.smart_open(data_file, encoding="iso-8859-1") as f:
+                for i, line in enumerate(f):
+                    if tokens_only:
+                        yield gensim.utils.simple_preprocess(line)
+                    else:
+                        # For training data, add tags
+                        yield gensim.models.doc2vec.TaggedDocument(gensim.utils.simple_preprocess(line), [i])
+
+        return
+
+    def create_corpus(self):
         """
         method read the files by using read_corpus
-        :param train_file: train text
-        :param test_file: test text
         :return:
         """
 
         print(time.asctime(time.localtime(time.time())), ": starting creating train corpus")
-        self.train_corpus = list(self.read_corpus(train_file))
-        print(time.asctime(time.localtime(time.time())), ": starting creating test corpus")
-        self.test_corpus = list(self.read_corpus(test_file, tokens_only=True))
-        print(time.asctime(time.localtime(time.time())), ": finished creating corpuses")
+        self.train_corpus = list(self.read_corpus())
+        # print(time.asctime(time.localtime(time.time())), ": starting creating test corpus")
+        # self.test_corpus = list(self.read_corpus(is_train=False, tokens_only=True))
+        # print(time.asctime(time.localtime(time.time())), ": finished creating corpuses")
 
     def build_vocab(self):
         """
@@ -84,8 +114,8 @@ class Doc2Vec:
         print(time.asctime(time.localtime(time.time())), ": starting building vocabulary")
         self.doc2vec_model.build_vocab(self.train_corpus)
         print(time.asctime(time.localtime(time.time())), ": finished building vocabulary")
-        self.voab_len = len(self.doc2vec_model.wv.vocab.keys())
-        print(time.asctime(time.localtime(time.time())), ": vocabulary size is: self.voab_len")
+        self.vocab_len = len(self.doc2vec_model.wv.vocab.keys())
+        print(time.asctime(time.localtime(time.time())), ": vocabulary size is:", self.vocab_len)
         # the vocabulary is a dictionary (accessible via model.wv.vocab)
 
     def train_doc2vec_model(self):
@@ -105,11 +135,10 @@ class Doc2Vec:
         :param doc: the document to embed
         :return: the embedded vector
         """
-        print(time.asctime(time.localtime(time.time())), ": infering vector for input: ", doc)
+        # print(time.asctime(time.localtime(time.time())), ": infering vector for input: ", doc)
         vec = self.doc2vec_model.infer_vector(doc)
-        print(time.asctime(time.localtime(time.time())), ": vector shape is: ", vec.shape)
+        # print(time.asctime(time.localtime(time.time())), ": vector shape is: ", vec.shape)
         return vec
-
 
     def prepare_raw_text(self, file, linux):
         """
@@ -177,10 +206,10 @@ def main():
     if linux:
         csv = "change_my_view/all_submissions_comments_with_label_all_deltalog_final.csv"
     else:
-        csv = "all_sub_com_fin_1000.csv"
+        csv = os.path.join(data_directory, 'comment_body.csv')
 
     # create object
-    doc2vec = Doc2Vec(csv,linux, 50,2,30)
+    doc2vec = Doc2Vec(csv, linux, 50, 2, 30)
 
     # test embedded vector
     test = "I going to show you a baby. Aalive and health"

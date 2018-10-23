@@ -128,10 +128,13 @@ class TrainModel:
                 # update parameters : tensor - learning_rate*gradient
                 self.optimizer.step()
 
-                if (i+1) % 100 ==0:
+                if (i+1) % 100 == 0:
                     print('Epoch: [%d%d], Step: [%d%d], Loss: %.4f' % (epoch+1, self.num_epochs, i+1,
                                                                        len(self.train_dataset)//self.batch_size,
                                                                        loss.data[0]))
+
+                # TODO: add graph of train/test auc, precision, recall per epoch
+                # TODO: call test after each epoch
 
     def test(self):
         """

@@ -1,26 +1,9 @@
 import pandas as pd
-from time import time
-import time
 import math
 from datetime import datetime
 import logging
-import pytz
-from copy import copy
 import os
-import nltk as nk
 import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
-from nltk.corpus import stopwords
-from nltk.stem.wordnet import WordNetLemmatizer
-import string
-# import gensim
-# from gensim import corpora
-# from nltk.stem import PorterStemmer
-# from nltk.tokenize import sent_tokenize, word_tokenize
-# from gensim.sklearn_api import ldamodel
-# from nltk.sentiment.vader import SentimentIntensityAnalyzer
-# from collections import defaultdict
-# from sklearn.feature_extraction.text import TfidfVectorizer
 
 
 base_directory = os.path.abspath(os.curdir)
@@ -107,8 +90,11 @@ group_dict = {
 def train_test_split():
     # load comments and branches
     branch_comments_info_df = pd.read_csv(
-        os.path.join(data_directory, 'comments_label_branch_info_after_remove.csv'))
-    branch_numbers_df = pd.read_csv(os.path.join(data_directory, 'new_branches_data_after_remove.csv'))
+        os.path.join(save_data_directory, 'comments_label_branch_info_after_remove.csv'))
+    branch_numbers_df = pd.read_csv(os.path.join(save_data_directory, 'new_branches_data_after_remove_no_length_0.csv'))
+    branch_numbers_df = branch_numbers_df.loc[(branch_numbers_df['branch_length'] > 1)]
+    branches_to_use = branch_numbers_df.branch_id.unique()
+    branch_comments_info_df = branch_comments_info_df.loc[branch_comments_info_df.branch_id.isin(branches_to_use)]
 
     # assign branch_length_group:
     branch_numbers_df['branch_length_group'] = branch_numbers_df.apply(branch_group_size, axis=1)
@@ -145,7 +131,7 @@ def train_test_split():
     for group_number in range(1, 16):
         rows_in_group = submission_group.loc[submission_group.group_number == group_number]
         print('group size:', rows_in_group.shape)
-        num_to_sample = math.floor(0.3 * rows_in_group.shape[0])
+        num_to_sample = math.floor(0.32 * rows_in_group.shape[0])
         print('num_to_sample:', num_to_sample)
         train_sample = rows_in_group.sample(n=num_to_sample)
         train_submissions += list(train_sample.submission_id.unique())
@@ -161,7 +147,11 @@ def train_test_split():
     # final_train_data = final_train_data.append(branch_comments_info_df.loc[
     #     branch_comments_info_df.submission_author.isin(train_data_users)])
     print('save train data')
-    train_data.to_csv(os.path.join(data_directory, 'train_data.csv'))
+    train_branches = train_data.branch_id.unique()
+    print('number of branches', train_branches.shape[0])
+    num_deltas_train = train_data.loc[train_data.num_delta > 0].branch_id.unique()
+    print('number of branches with delta', num_deltas_train.shape[0])
+    train_data.to_csv(os.path.join(save_data_directory, 'train_data.csv'))
 
     # create test and validation data
     # get the submissions for test data
@@ -172,7 +162,7 @@ def train_test_split():
     for group_number in range(1, 16):
         rows_in_group = submission_group_not_in_train.loc[submission_group_not_in_train.group_number == group_number]
         print('group size:', rows_in_group.shape)
-        num_to_sample = math.floor(0.3 * rows_in_group.shape[0])
+        num_to_sample = math.floor(0.32 * rows_in_group.shape[0])
         print('num_to_sample:', num_to_sample)
         test_sample = rows_in_group.sample(n=num_to_sample)
         test_submissions += list(test_sample.submission_id.unique())
@@ -180,12 +170,20 @@ def train_test_split():
     # get the users in the test submissions
     test_data = branch_comments_info_df.loc[branch_comments_info_df.submission_id.isin(test_submissions)]
     print('save test data')
-    test_data.to_csv(os.path.join(data_directory, 'test_data.csv'))
+    test_branches = test_data.branch_id.unique()
+    print('number of branches', test_branches.shape[0])
+    num_deltas_test = test_data.loc[test_data.num_delta > 0].branch_id.unique()
+    print('number of branches with delta', num_deltas_test.shape[0])
+    test_data.to_csv(os.path.join(save_data_directory, 'test_data.csv'))
 
     val_submissions = np.setdiff1d(submissions_not_in_train, test_submissions)
     val_data = branch_comments_info_df.loc[branch_comments_info_df.submission_id.isin(val_submissions)]
     print('save val data')
-    val_data.to_csv(os.path.join(data_directory, 'val_data.csv'))
+    val_branches = val_data.branch_id.unique()
+    print('number of branches', val_branches.shape[0])
+    num_deltas_val = val_data.loc[val_data.num_delta > 0].branch_id.unique()
+    print('number of branches with delta', num_deltas_val.shape[0])
+    val_data.to_csv(os.path.join(save_data_directory, 'val_data.csv'))
 
 
 def main():

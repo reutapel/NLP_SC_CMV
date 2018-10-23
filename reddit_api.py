@@ -14,7 +14,7 @@ import numpy as np
 # configurate logging
 base_directory = os.path.abspath(os.curdir)
 log_directory = os.path.join(base_directory, 'logs')
-results_directory = os.path.join(base_directory, 'change my view')
+results_directory = os.path.join(base_directory, 'change_my_view')
 data_directory = os.path.join(base_directory, 'data')
 LOG_FILENAME = os.path.join(log_directory,
                             datetime.now().strftime('LogFile_importing_change_my_view_%d_%m_%Y_%H_%M_%S.log'))
@@ -475,10 +475,10 @@ def main():
     # create class instance
     connect = ApiConnection(subreddit)
 
-    #get submissions of sub reddit
+    # get submissions of sub reddit
     subids = connect.get_submissions()
 
-    #get comments of submissions
+    # get comments of submissions
     data_name = "all_submissions_comments.csv"
     all_submissions_comments, OP_deltas_comments_ids = connect.parse_comments(subids, data_name)
 

@@ -586,6 +586,10 @@ class RemoveCommentsFromData:
 
 
 def fix_branch_data():
+    """
+    This function needs to run if the create_final_data function failed and new_branches_data_after_remove has not saved
+    :return:
+    """
     new_comments_data_after_remove = pd.read_csv(os.path.join(data_directory, 'new_comments_data_after_remove.csv'))
     branch_numbers_df = pd.read_csv(os.path.join(data_directory, 'branch_numbers_df_fix.csv'))
 

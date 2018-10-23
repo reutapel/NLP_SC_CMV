@@ -18,6 +18,7 @@ from gensim.sklearn_api import ldamodel
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from sklearn.feature_extraction.text import TfidfVectorizer
 import pickle
+from doc2vec import Doc2Vec
 # from gensim import corpora
 # from nltk.stem import PorterStemmer
 # from nltk.tokenize import sent_tokenize, word_tokenize
@@ -81,7 +82,7 @@ class CreateFeatures:
         self.data = None
 
         # define branch_comments_raw_text_df with number of columns as the max_branch_length
-        self.branch_comments_raw_text_df = None
+        self.branch_comments_embedded_text_df = None
 
         # Create comments_features
         self.comment_features_columns = ['comment_id', 'comment_real_depth', 'comment_len', 'time_between_sub_com',
@@ -125,6 +126,7 @@ class CreateFeatures:
         self.train_dictionary = None
         self.train_data_term_matrix = None
         self.lad_model = None
+        self.doc2vec_model = None
         self.submission_comments_dict = None
         self.branch_comments_dict = None
         self.submission_data_dict = dict()
@@ -174,7 +176,7 @@ class CreateFeatures:
         self.data = self.data.merge(comment_branch_groupby, on='comment_id')
 
         # define branch_comments_raw_text_df with number of columns as the max_branch_length
-        self.branch_comments_raw_text_df = pd.DataFrame(columns=np.arange(self.max_branch_length))
+        self.branch_comments_embedded_text_df = pd.DataFrame(columns=np.arange(self.max_branch_length))
 
         # Create comments_features
         self.branch_comments_features_df = pd.DataFrame(pd.DataFrame(columns=np.arange(self.max_branch_length)))
@@ -204,12 +206,23 @@ class CreateFeatures:
 
             self.lad_model = ldamodel.LdaTransformer(num_topics=self.number_of_topics, id2word=self.train_dictionary,
                                                      passes=50, minimum_probability=0)
-            # Train LDA model on the comments term matrix.
+            # Train LDA model on the comments term matrix
             print('{}: Fit LDA model on {}'.format((time.asctime(time.localtime(time.time()))), self.data_file_name))
             logging.info('{}: Fit LDA model on {}'.format((time.asctime(time.localtime(time.time()))),
-                                                           self.data_file_name))
+                                                          self.data_file_name))
 
             self.lad_model = self.lad_model.fit(list(self.train_data_term_matrix.values()))
+
+            # create and train doc2vec model
+            print('{}: Create and train Doc2Vec model on {}'.format((time.asctime(time.localtime(time.time()))),
+                                                                    self.data_file_name))
+            logging.info('{}: Create and train Doc2Vec model on {}'.format((time.asctime(time.localtime(time.time()))),
+                                                                           self.data_file_name))
+            submission_body = self.all_submissions['submission_body']
+            comments_body = self.data['comment_body']
+            train_data_doc2vec = submission_body.append(comments_body, ignore_index=True)
+            train_data_doc2vec = pd.Series(train_data_doc2vec.unique())
+            self.doc2vec_model = Doc2Vec(fname='', linux=False, use_file=False, data=train_data_doc2vec)
 
         # create dict with the data for each submission:
         start_time = time.time()
@@ -219,7 +232,6 @@ class CreateFeatures:
             self.submission_comments_dict[submission_id] =\
                 self.data.loc[self.data['submission_id'] == submission_id].drop_duplicates(subset='comment_id')
         print('time to create submission dict: ', time.time() - start_time)
-        logging.info('time to create submission dict: ', time.time() - start_time)
 
         # create dict with the data for each branch:
         self.all_branches = self.all_branches.assign(branch_first_comment=0)
@@ -235,7 +247,6 @@ class CreateFeatures:
             self.all_branches.loc[self.all_branches.branch_id == branch_id, 'branch_last_comment'] =\
                 branch_data['comment_created_utc'].max()
         print('time to create branch dict: ', time.time() - start_time)
-        logging.info('time to create branch dict: ', time.time() - start_time)
 
         return
 
@@ -245,14 +256,14 @@ class CreateFeatures:
         :return:
         """
         print(time.asctime(time.localtime(time.time())), ': Start branch features creation')
-        logging.info(time.asctime(time.localtime(time.time())), ': Start branch features creation')
+        logging.info('{}: Start branch features creation'.format(time.asctime(time.localtime(time.time()))))
 
         for index, branch_id in self.branch_ids.iteritems():
             if index % 100 == 0:
                 print(time.asctime(time.localtime(time.time())), ': Start branch id', branch_id,
                       'with branch index', index)
-                logging.info(time.asctime(time.localtime(time.time())), ': Start branch id', branch_id,
-                              'with branch index', index)
+                logging.info('{}: Start branch id {} with branch index {}'.
+                             format(time.asctime(time.localtime(time.time())), branch_id, index))
             branch = self.all_branches.loc[self.all_branches.branch_id == branch_id]
             submission_id = branch.submission_id.values[0]
             branch_features = pd.DataFrame(columns=self.branch_submission_dict_features)
@@ -280,16 +291,16 @@ class CreateFeatures:
         :return:
         """
         print(time.asctime(time.localtime(time.time())), ': Start branch deltas features creation')
-        logging.info(time.asctime(time.localtime(time.time())), ': Start branch deltas features creation')
+        logging.info('{}: Start branch deltas features creation'.format(time.asctime(time.localtime(time.time()))))
 
         for index, branch_id in self.branch_ids.iteritems():
             if index % 100 == 0:
                 print(time.asctime(time.localtime(time.time())), ': Start branch id', branch_id,
                       'with branch index', index)
-                logging.info(time.asctime(time.localtime(time.time())), ': Start branch id', branch_id,
-                              'with branch index', index)
-            branch = self.all_branches.loc[self.all_branches.branch_id == branch_id]
-            is_delta_in_branch = bool(branch.num_delta.values)  # True if there is deltas and False otherwise
+                logging.info('{}: Start branch id {} with branch index {}'
+                             .format(time.asctime(time.localtime(time.time())), branch_id, index))
+                branch = self.all_branches.loc[self.all_branches.branch_id == branch_id]
+            is_delta_in_branch = int(bool(branch.num_delta.values))  # 1 if there is deltas and 0 otherwise
             number_of_deltas_in_branch = branch.num_delta.values[0]
             deltas_comments_location_in_branch = list(self.data.loc[(self.data.branch_id == branch.branch_id.values[0]) &
                                                                     (self.data.delta == 1)]['comment_real_depth'])
@@ -305,7 +316,7 @@ class CreateFeatures:
         :return:
         """
         print(time.asctime(time.localtime(time.time())), ': Start submissions features creation')
-        logging.info(time.asctime(time.localtime(time.time())), ': Start submissions features creation')
+        logging.info('{}: Start submissions features creation'.format(time.asctime(time.localtime(time.time()))))
 
         # Features calculated for all the data frame:
         self.all_submissions['submission_len'] = self.all_submissions['submission_body'].str.len()
@@ -359,7 +370,9 @@ class CreateFeatures:
             submitter_features.loc[0, 'number_of_comments_in_tree_from_submitter'] =\
                 number_of_comments_in_tree_from_submitter
 
-            self.submission_data_dict[submission.submission_id] = [submission.submission_title_and_body,
+            embedded_submission_text = self.doc2vec_model.infer_doc_vector(submission.submission_title_and_body)
+
+            self.submission_data_dict[submission.submission_id] = [embedded_submission_text,
                                                                    np.array(submission_features)[0],
                                                                    np.array(submitter_features)[0]]
 
@@ -372,17 +385,23 @@ class CreateFeatures:
         :return:
         """
         print(time.asctime(time.localtime(time.time())), ': Start comments text creation')
-        logging.info(time.asctime(time.localtime(time.time())), ': Start comments text creation')
+        logging.info('{}: Start comments text creation'.format(time.asctime(time.localtime(time.time()))))
 
         for index, branch_id in self.branch_ids.iteritems():
-            branch_comments_body = self.branch_comments_dict[branch_id]['comment_body']
+            branch_comments_body = self.branch_comments_dict[branch_id][['comment_body']]
+            branch_comments_body = branch_comments_body.assign(embedded_comment_text='')
+            for inner_index, comment in branch_comments_body.iterrows():
+                branch_comments_body.loc[inner_index, 'embedded_comment_text'] =\
+                    self.doc2vec_model.infer_doc_vector(comment['comment_body'])
+            branch_comments_body = branch_comments_body['embedded_comment_text']
             if branch_comments_body.shape[0] < self.max_branch_length:
                 append_zero = pd.Series(np.zeros(shape=(self.max_branch_length - branch_comments_body.shape[0])))
                 branch_comments_body = pd.concat([branch_comments_body, append_zero], ignore_index=True)
             else:
-                branch_comments_body = branch_comments_body.reset_index()['comment_body']
+                branch_comments_body = branch_comments_body.reset_index()['embedded_comment_text']
             branch_comments_body.name = index
-            self.branch_comments_raw_text_df = self.branch_comments_raw_text_df.append(branch_comments_body)
+
+            self.branch_comments_embedded_text_df = self.branch_comments_embedded_text_df.append(branch_comments_body)
 
         return
 
@@ -394,7 +413,8 @@ class CreateFeatures:
         """
 
         print(time.asctime(time.localtime(time.time())), ': Start comments and commenters features creation')
-        logging.info(time.asctime(time.localtime(time.time())), ': Start comments and commenters features creation')
+        logging.info('{}: Start comments and commenters features creation'.
+                     format(time.asctime(time.localtime(time.time()))))
 
         # Get topic model result
         topic_model_result = self.topic_model()
@@ -411,8 +431,8 @@ class CreateFeatures:
             if branch_index % 100 == 0:
                 print(time.asctime(time.localtime(time.time())), ': Start branch_id', branch_id,
                       'with branch index', branch_index)
-                logging.info(time.asctime(time.localtime(time.time())), ': Start branch_id', branch_id,
-                              'with branch index', branch_index)
+                logging.info('{}: Start branch_id {} with branch index {}'.
+                             format(time.asctime(time.localtime(time.time())), branch_id, branch_index))
             branch_comments = self.branch_comments_dict[branch_id]
             branch_comments = branch_comments.sort_values(by='comment_real_depth', ascending=True).reset_index()
             for comment_index, comment in branch_comments.iterrows():
@@ -535,16 +555,17 @@ class CreateFeatures:
 
         # save features
         print(time.asctime(time.localtime(time.time())), ': Start save features for', self.data_file_name)
-        logging.info(time.asctime(time.localtime(time.time())), ': Start save features for', self.data_file_name)
+        logging.info('{}: Start save features for {}'.
+                     format(time.asctime(time.localtime(time.time())), self.data_file_name))
 
         self.branch_comments_features_df.to_csv(os.path.join(features_directory, self.data_file_name +
                                                              '_branch_comments_features_df.csv'))
         self.branch_comments_features_df.to_hdf(os.path.join(features_directory, self.data_file_name +
                                                              '_branch_comments_features_df.h5'), key='df')
 
-        self.branch_comments_raw_text_df.to_csv(os.path.join(features_directory, self.data_file_name +
+        self.branch_comments_embedded_text_df.to_csv(os.path.join(features_directory, self.data_file_name +
                                                              '_branch_comments_embedded_text_df.csv'))
-        self.branch_comments_raw_text_df.to_hdf(os.path.join(features_directory, self.data_file_name +
+        self.branch_comments_embedded_text_df.to_hdf(os.path.join(features_directory, self.data_file_name +
                                                              '_branch_comments_embedded_text_df.h5'), key='df')
 
         self.branch_comments_user_profiles_df.to_csv(os.path.join(features_directory, self.data_file_name +
@@ -832,7 +853,7 @@ class CreateFeatures:
             print('{}: Create data term matrix for {}'.format((time.asctime(time.localtime(time.time()))),
                                                               self.data_file_name))
             logging.info('{}: Create data term matrix for {}'.format((time.asctime(time.localtime(time.time()))),
-                                                                      self.data_file_name))
+                                                                     self.data_file_name))
             data_term_matrix = {index: dictionary.doc2bow(doc) for index, doc in data_clean.items()}
 
         # Get topics for the data
