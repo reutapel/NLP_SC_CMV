@@ -162,7 +162,7 @@ class DeltaModel(nn.Module):
         :return: prediction on x
         """
 
-        print("forward pass")
+        # print("forward pass")
         # divide input in a comprehensive way, sort batch by lengths
         branch_comments_embedded_text, branches_lengths, sorted_idx = self.sort_batch(x[0], x[7])
         branch_comment_features_tensor, _, _ = self.sort_batch(x[1], x[7])

@@ -5,14 +5,21 @@ from torch.utils import data as dt
 from DeltaModel import DeltaModel
 from model_utils import InitLstm
 from model_utils import InitConv1d
-import joblib
 import pandas as pd
 from tqdm import tqdm
 from time import gmtime, strftime
 from sklearn import metrics
-
+import joblib
+import matplotlib.pyplot as plt
+from pylab import savefig
+from matplotlib.ticker import MaxNLocator
+import sys
+old_stdout = sys.stdout
+log_file = open("train_model.log","w")
+sys.stdout = log_file
 
 # TODO: F.mse_loss(size_average, reduce) : parameters that affect if we get average values per batch : sum or average
+
 
 class TrainModel:
     """
@@ -51,7 +58,7 @@ class TrainModel:
         self.batch_size = batch_size
         self.criterion = criterion
 
-        # craete model
+        # create model
         self.model = DeltaModel(init_lstm_text, init_lstm_comments, init_lstm_users, init_conv_text,
                                 init_conv_sub_features, init_conv_sub_profile_features, input_size_text_sub,
                                 input_size_sub_features, input_size_sub_profile_features, self.batch_size, num_labels,
@@ -60,17 +67,21 @@ class TrainModel:
         # on the model.parameters will be performed the update by stochastic gradient descent
         self.optimizer = tr.optim.SGD(self.model.parameters(), lr=learning_rate)
 
-        # create datesets
+        # create datasets
         self.train_dataset = self.create_dataset(train_data)
         self.test_dataset = self.create_dataset(test_data)
 
         # create data loaders
         self.train_loader = self.create_data_loader(self.train_dataset, self.batch_size)
-        self.test_loader =  self.create_data_loader(self.test_dataset, self.batch_size)
+        self.test_loader = self.create_data_loader(self.test_dataset, self.batch_size)
+        self.train_loss_list = list()
+        self.test_loss_list = list()
+        self.measurements_dict = dict()
+        self.measurements_dict["train"] = dict()
+        self.measurements_dict["test"] = dict()
 
-        # calculate number of trainable paramaters
+        # calculate number of trainable parameters
         print(sum(p.numel() for p in self.model.parameters() if p.requires_grad), " trainable parameters in model")
-
 
     def create_dataset(self, data):
         """
@@ -80,7 +91,6 @@ class TrainModel:
         """
 
         return CustomDataset(*data)
-
 
     def create_data_loader(self, dataset, batch_size):
         """
@@ -92,7 +102,6 @@ class TrainModel:
 
         return dt.DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True)
 
-
     def train(self):
         """
         train the model on train data by batches iterate all epochs
@@ -101,23 +110,44 @@ class TrainModel:
 
         self.model.train()
 
-        #device = tr.device("cuda" if tr.cuda.is_available() else "cpu")
+        # device = tr.device("cuda" if tr.cuda.is_available() else "cpu")
 
         for epoch in tqdm(range(self.num_epochs), desc='epoch'):
 
-            # TODO: if want to send to test in each epoch need to do again self.model.train()
+            print("start epoch number ", epoch)
+
+            correct = 0
+            total = 0
+            train_labels = tr.Tensor()
+            train_predictions = tr.Tensor()
+            first_batch = True
             for i, (data_points, labels) in tqdm(enumerate(self.train_loader), desc='batch'):
 
                 # forward
                 outputs, sorted_idx, batch_size = self.model(data_points)
                 # TODO: understand impact of packed padded to loss, like function loss in model.py
 
+                outputs = outputs.reshape(batch_size, -1).float()
+
                 # sort labels
-                labels = labels[sorted_idx].reshape(batch_size, -1)
+                labels = labels[sorted_idx].reshape(batch_size, -1).float()
+
+                # calculate for measurements
+                predicted = (outputs > 0.5).float() * 1
+                total += labels.size(0)
+                correct += (predicted == labels).sum()
+                train_labels = tr.cat((train_labels, labels))
+                train_predictions = tr.cat((train_predictions, predicted))
 
                 # calculate loss
                 print("calc loss")
-                loss = self.criterion(outputs.reshape(batch_size, -1), labels.float())
+                loss = self.criterion(outputs, labels)
+                if first_batch:
+                    first_batch = False
+                    self.train_loss_list.append(loss.data[0].item())
+                else:
+                    self.train_loss_list[epoch] += loss.data[0].item()
+
 
                 # initialize gradient so only current batch will be summed and then backward
                 self.optimizer.zero_grad()
@@ -133,17 +163,24 @@ class TrainModel:
                                                                        len(self.train_dataset)//self.batch_size,
                                                                        loss.data[0]))
 
-                # TODO: add graph of train/test auc, precision, recall per epoch
-                # TODO: call test after each epoch
+            # calculate measurements on train data
+            self.calc_measurements(correct, total, train_labels, train_predictions, epoch,  "train")
+            self.test(epoch)
+            self.model.train()
 
-    def test(self):
+        # save the model
+        tr.save(self.model.state_dict(), 'model.pkl')
+
+    def test(self, epoch):
         """
-        test model on test data calculate accuracy
+        test model on test data
         :return:
         """
         print("start evaluation on test", strftime("%a, %d %b %Y %H:%M:%S +0000", gmtime()))
+
         # doesn't save history for backwards, turns off dropouts
         self.model.eval()
+        first_batch = True
 
         correct = 0
         total = 0
@@ -156,20 +193,65 @@ class TrainModel:
 
             labels = labels[sorted_idx].reshape(batch_size, -1).float()
 
+            # calculate loss
+            loss = self.criterion(outputs, labels)
+            if first_batch:
+                first_batch = False
+                self.test_loss_list.append(loss.data[0].item())
+            else:
+                self.test_loss_list[epoch] += loss.data[0].item()
+
             predicted = (outputs > 0.5).float() * 1
             total += labels.size(0)
             correct += (predicted == labels).sum()
             test_labels = tr.cat((test_labels, labels))
-            test_predictions = tr.cat((test_predictions, outputs))
+            # TODO: think why it was with outputs: test_predictions = tr.cat((test_predictions, outputs))
+            test_predictions = tr.cat((test_predictions, predicted))
 
         # calculate measurements on test data
-        print('Accuracy of the model on the test: %d %%' % (100 * correct / total))
-        fpr, tpr, thresholds = metrics.roc_curve(test_labels.detach().numpy(), test_predictions.detach().numpy(),
-                                                 pos_label=1)
-        print("AUC is: ", metrics.auc(fpr, tpr))
+        self.calc_measurements(correct, total, test_labels, test_predictions, epoch, "test")
 
-        # save the model
-        tr.save(self.model.state_dict(), 'model.pkl')
+    def calc_measurements(self, correct, total, labels, pred, epoch, dataset):
+
+        labels = labels.detach().numpy()
+        pred = pred.detach().numpy()
+        print("calculate measurements on ", dataset)
+        accuracy = correct / total
+        print('Accuracy: %d %%' % (100 * accuracy))
+        fpr, tpr, thresholds = metrics.roc_curve(labels, pred,
+                                                 pos_label=1)
+        auc = metrics.auc(fpr, tpr)
+        print("AUC: ", auc)
+
+        precision = metrics.precision_score(labels, pred)
+        print("precision: ", precision)
+
+        recall = metrics.recall_score(labels, pred)
+        print("recall: ", recall)
+
+        self.measurements_dict[dataset][epoch] = [accuracy, auc, precision, recall]
+
+    def plot_loss(self, epoch_count, train_loss, test_loss):
+
+        # Visualize loss history
+        plt.plot(list(range(epoch_count)), train_loss, 'g--')
+        plt.plot(list(range(epoch_count)), test_loss, 'b-')
+        plt.legend(['Training Loss', 'Test Loss'])
+
+        # set ticks as int
+        plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+
+        # handle axis labels
+        plt.xlabel('Epoch', fontsize=12)
+        plt.ylabel('Loss', fontsize=12, rotation='horizontal', verticalalignment='bottom')
+        plt.gca().yaxis.set_label_coords(0, 1.01)
+        # plt.gca().xaxis.set_label_coords(0.5, -0.02)
+
+        for i in ['top', 'right']:
+            plt.gca().spines[i].set_visible(False)
+        plt.legend(loc='upper right', bbox_to_anchor=(1.2, 1.05), ncol=1, frameon=True)
+
+        savefig('loss_graph.png')
 
 
 def main():
@@ -267,7 +349,12 @@ def main():
 
     # train and test model
     train_model.train()
-    train_model.test()
+    joblib.dump(train_model.measurements_dict, "measurements_dict.pkl")
+    train_model.plot_loss(train_model.num_epochs, train_model.train_loss_list, train_model.test_loss_list)
+
+    sys.stdout = old_stdout
+    log_file.close()
+
 
 if __name__ == '__main__':
     main()
