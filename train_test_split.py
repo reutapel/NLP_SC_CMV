@@ -91,7 +91,7 @@ def train_test_split():
     # load comments and branches
     branch_comments_info_df = pd.read_csv(
         os.path.join(save_data_directory, 'comments_label_branch_info_after_remove.csv'))
-    branch_numbers_df = pd.read_csv(os.path.join(save_data_directory, 'new_branches_data_after_remove_no_length_0.csv'))
+    branch_numbers_df = pd.read_csv(os.path.join(save_data_directory, 'new_branches_data_after_remove.csv'))
     branch_numbers_df = branch_numbers_df.loc[(branch_numbers_df['branch_length'] > 1)]
     branches_to_use = branch_numbers_df.branch_id.unique()
     branch_comments_info_df = branch_comments_info_df.loc[branch_comments_info_df.branch_id.isin(branches_to_use)]

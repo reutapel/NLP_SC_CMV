@@ -60,7 +60,7 @@ class CreateFeatures:
                           'pct_comments_removed', 'branch_length', 'delta_index_in_branch',
                           'num_comments_after_delta']
         self.branch_numbers_df = pd.read_csv(os.path.join(save_data_directory,
-                                                          'new_branches_data_after_remove_no_length_0.csv'),
+                                                          'new_branches_data_after_remove.csv'),
                                              usecols=branch_columns)
         # self.branch_numbers_df.columns = ['branch_id', 'branch_key', 'num_delta', 'submission_id',
         #                                   'num_comments_removed', 'pct_comments_removed', 'branch_length',
@@ -145,7 +145,7 @@ class CreateFeatures:
         self.data_file_name = data_file_name
         self.is_train = is_train
         # all the data, with label
-        self.data = pd.read_csv(os.path.join(data_directory, data_file_name + '.csv'), skipinitialspace=True,
+        self.data = pd.read_csv(os.path.join(save_data_directory, data_file_name + '_data.csv'), skipinitialspace=True,
                                 usecols=self.data_columns)
         self.data_pre_process()
 
@@ -326,8 +326,8 @@ class CreateFeatures:
             if sub_index % 100 == 0:
                 print(time.asctime(time.localtime(time.time())), ': Start submission id', submission.submission_id,
                       'with submission index', sub_index)
-                logging.info(time.asctime(time.localtime(time.time())), ': Start submission id',
-                              submission.submission_id, 'with submission index', sub_index)
+                logging.info('{}: Start submission id {} with submission index {}'.
+                             format(time.asctime(time.localtime(time.time())), submission.submission_id, sub_index))
             submission_features = pd.DataFrame(columns=self.submission_features_columns)
             submitter_features = pd.DataFrame(columns=self.submitter_features_columns)
 
@@ -558,34 +558,39 @@ class CreateFeatures:
         logging.info('{}: Start save features for {}'.
                      format(time.asctime(time.localtime(time.time())), self.data_file_name))
 
-        self.branch_comments_features_df.to_csv(os.path.join(features_directory, self.data_file_name +
-                                                             '_branch_comments_features_df.csv'))
-        self.branch_comments_features_df.to_hdf(os.path.join(features_directory, self.data_file_name +
-                                                             '_branch_comments_features_df.h5'), key='df')
+        self.branch_comments_features_df.to_csv(os.path.join(features_directory, 'branch_comments_features_df_' +
+                                                             self.data_file_name + '.csv'))
+        self.branch_comments_features_df.to_hdf(os.path.join(features_directory, 'branch_comments_features_df_' +
+                                                             self.data_file_name + '.h5'), key='df')
 
-        self.branch_comments_embedded_text_df.to_csv(os.path.join(features_directory, self.data_file_name +
-                                                             '_branch_comments_embedded_text_df.csv'))
-        self.branch_comments_embedded_text_df.to_hdf(os.path.join(features_directory, self.data_file_name +
-                                                             '_branch_comments_embedded_text_df.h5'), key='df')
+        self.branch_comments_embedded_text_df.to_csv(os.path.join(features_directory,
+                                                                  'branch_comments_embedded_text_df_' +
+                                                                  self.data_file_name + '.csv'))
+        self.branch_comments_embedded_text_df.to_hdf(os.path.join(features_directory,
+                                                                  'branch_comments_embedded_text_df_' +
+                                                                  self.data_file_name + '.h5'), key='df')
 
-        self.branch_comments_user_profiles_df.to_csv(os.path.join(features_directory, self.data_file_name +
-                                                                  '_branch_comments_user_profiles_df.csv'))
-        self.branch_comments_user_profiles_df.to_hdf(os.path.join(features_directory, self.data_file_name +
-                                                                  '_branch_comments_user_profiles_df.h5'), key='df')
+        self.branch_comments_user_profiles_df.to_csv(os.path.join(features_directory,
+                                                                  'branch_comments_user_profiles_df_' +
+                                                                  self.data_file_name + '.csv'))
+        self.branch_comments_user_profiles_df.to_hdf(os.path.join(features_directory,
+                                                                  'branch_comments_user_profiles_df_' +
+                                                                  self.data_file_name + '.h5'), key='df')
 
-        with open(os.path.join(features_directory, self.data_file_name + '_branch_comments_user_profiles_df.pickle'),
+        with open(os.path.join(features_directory, 'branch_submission_dict_' + self.data_file_name + '.pickle'),
                   'wb') as handle:
             pickle.dump(self.branch_submission_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-        with open(os.path.join(features_directory, self.data_file_name + '_submission_data_dict.pickle'), 'wb')\
+        with open(os.path.join(features_directory, 'submission_data_dict_' + self.data_file_name + '.pickle'), 'wb')\
                 as handle:
             pickle.dump(self.submission_data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-        with open(os.path.join(features_directory, self.data_file_name + '_branch_deltas_data_dict.pickle'), 'wb') \
-                as handle:
+        with open(os.path.join(features_directory, 'branch_deltas_data_dict_' + self.data_file_name + '.pickle'),
+                  'wb') as handle:
             pickle.dump(self.branch_deltas_data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-        with open(os.path.join(features_directory, self.data_file_name + '_branches_lengths_list.txt'), 'wb') as handle:
+        with open(os.path.join(features_directory, 'branches_lengths_list_' + self.data_file_name + '.txt'), 'wb')\
+                as handle:
             pickle.dump(self.branches_lengths_list, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         return
@@ -1026,6 +1031,8 @@ def clean(text):
     :param str text: the text we want to clean
     :return: str normalized: the cleaned text
     """
+    if type(text) != str:
+        print(text)
     text = text.lstrip('b').strip('"').strip("'").strip(">")
     stop_free = " ".join([i for i in text.lower().split() if i not in stop])
     punc_free = "".join(ch for ch in stop_free if ch not in exclude)
@@ -1041,7 +1048,7 @@ def main():
 
     print('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
-    create_features.create_data('small_test_data', is_train=True)
+    create_features.create_data('train_small', is_train=True)
     print('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
     print('data sizes: train data: {}'.format(create_features.data.shape))
     logging.info('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
@@ -1051,30 +1058,30 @@ def main():
     print('{}: Finish creating train data features, start loading test data'.
           format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Finish creating train data features, start loading test data'.
-                  format((time.asctime(time.localtime(time.time())))))
+                 format((time.asctime(time.localtime(time.time())))))
 
-    create_features.create_data('test_data', is_train=False)
+    create_features.create_data('test_small', is_train=False)
     print('{}: Finish loading the data, start create features'.
           format((time.asctime(time.localtime(time.time())))))
     print('data sizes: test data: {}'.format(create_features.data.shape))
     logging.info('{}: Finish loading the data, start create features'.
-                  format((time.asctime(time.localtime(time.time())))))
+                 format((time.asctime(time.localtime(time.time())))))
     logging.info('data sizes: test data: {}'.format(create_features.data.shape))
     create_features.create_all_features()
 
     print('{}: Finish creating test data features, start loading val data'.
           format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Finish creating test data features, start loading val data'.
-                  format((time.asctime(time.localtime(time.time())))))
-    create_features.create_data('val_data', is_train=False)
+                 format((time.asctime(time.localtime(time.time())))))
+    create_features.create_data('val_small', is_train=False)
     print('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
     print('data sizes: val data: {}'.format(create_features.data.shape))
     logging.info('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
     logging.info('data sizes: val data: {}'.format(create_features.data.shape))
     create_features.create_all_features()
 
-    print('{}: Finish creating test data features'.format((time.asctime(time.localtime(time.time())))))
-    logging.info('{}: Finish creating test data features'.format((time.asctime(time.localtime(time.time())))))
+    print('{}: Finish creating val data features'.format((time.asctime(time.localtime(time.time())))))
+    logging.info('{}: Finish creating val data features'.format((time.asctime(time.localtime(time.time())))))
 
 
 if __name__ == '__main__':
