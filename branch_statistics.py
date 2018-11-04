@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-data_set = 'val_data'
+data_set = 'train_data'
 base_directory = os.path.abspath(os.curdir)
 data_directory = os.path.join(base_directory, 'data')
 save_data_directory = os.path.join(data_directory, 'filter_submissions')
@@ -68,7 +68,7 @@ def create_chart_bars(title, x, y, xlabel, ylabel, y2=None, x2=None, is_split=Fa
     plt.ylabel(ylabel)
     plt.xticks(x)
 
-    plt.show()
+    # plt.show()
 
     fig_to_save = fig
     fig_to_save.savefig(os.path.join(branch_statistics_directory, title + '.png'), bbox_inches='tight')
@@ -85,7 +85,7 @@ class CalculateStatistics:
         """
         self.statistics = pd.DataFrame(columns=['mean', 'STD', 'median', 'sum', 'count', 'min', 'max'])
         self.branch_numbers_df = pd.read_csv(os.path.join(
-            save_data_directory, 'new_branches_data_after_remove_no_length_0.csv'))
+            save_data_directory, 'new_branches_data_after_remove.csv'))
         self.branch_numbers_df = self.branch_numbers_df[['branch_id', 'branch_length', 'num_delta',
                                                          'num_comments_after_delta', 'delta_index_in_branch',
                                                          'submission_id']]
@@ -210,7 +210,8 @@ class CalculateStatistics:
         no_delta_group_by = no_delta.groupby('submission_id').agg(no_delta_function)
         no_delta_group_by.columns.set_levels(['no_delta_branch_length'], level=0, inplace=True)
         submission_group_by = pd.concat([submission_group_by, delta_group_by, no_delta_group_by], axis=1)
-        submission_group_by.to_csv(os.path.join(branch_statistics_directory, 'statistics_per_submission.csv'))
+        submission_group_by.to_csv(os.path.join(branch_statistics_directory, 'statistics_per_submission_'
+                                                + data_set + '.csv'))
 
     def statistics_per_branch_users(self):
         """
@@ -242,7 +243,8 @@ class CalculateStatistics:
         num_comments_users_branch['submitter_pcts'] = num_comments_users_branch.submitter_pcts.fillna(0)
         submitter_pcts = num_comments_users_branch[['submitter_pcts']]
         statistics_branch_user = pd.concat([num_users_branch, statistics_comments_users_branch, submitter_pcts], axis=1)
-        statistics_branch_user.to_csv(os.path.join(branch_statistics_directory, 'statistics_branch_user.csv'))
+        statistics_branch_user.to_csv(os.path.join(branch_statistics_directory, 'statistics_branch_user_'
+                                                   + data_set + '.csv'))
 
     def index_delta_branch_length(self):
         """
@@ -285,7 +287,8 @@ def main():
         calculate_statistics_obj.calculate_statistics_hist(statistic_column)
         if statistic_column == 'branch_length':  # only for branch length this is relevant
             calculate_statistics_obj.calculate_statistics_hist(statistic_column, is_split=True)
-    calculate_statistics_obj.statistics.to_csv(os.path.join(branch_statistics_directory, 'statistics.csv'))
+    calculate_statistics_obj.statistics.to_csv(os.path.join(branch_statistics_directory, 'statistics_' + data_set
+                                                            + '.csv'))
     calculate_statistics_obj.statistics_per_submission()
     calculate_statistics_obj.statistics_per_branch_users()
 

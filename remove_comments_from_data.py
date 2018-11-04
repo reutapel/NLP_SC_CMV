@@ -246,59 +246,62 @@ class RemoveCommentsFromData:
                                                            comment.comment_real_depth - 1]
                 comment_after_giving_delta = comments_in_branch.loc[comments_in_branch.comment_real_depth ==
                                                                     comment.comment_real_depth + 1]
-                if int(comment_got_delta.delta) == 1:  # the comment before the current comment got delta
-                    comment_got_delta_author = comment_got_delta.comment_author
-                    comment_after_giving_delta_author = comment_after_giving_delta.comment_author
-                    # the same user got delta and responded to the delta and wrote one of the after_delta_tokens
-                    if (comment_got_delta_author.values == comment_after_giving_delta_author.values) and\
-                            (any(delta_token in comment_after_giving_delta['comment_body'][
-                                comment_after_giving_delta.index[0]].lower()
-                                 for delta_token in self.after_delta_tokens)):
-                        # remove after_delta_tokens from comment
-                        # filter the delta from the comment_body:
-                        split_comment = comment_after_giving_delta['comment_body'].values[0].split(sep='\\n')
-                        # keep only parts without delta token
-                        split_comment = [part for part in split_comment if
-                                         not any(delta_token in part.lower() for delta_token in
-                                                 self.after_delta_tokens)]
-                        new_comment = '\n'.join(split_comment)
-                        comment_after_giving_delta = comment_after_giving_delta.assign(new_comment=new_comment)
-                        self.all_comments_after_giving_delta_author = \
-                            self.all_comments_after_giving_delta_author.append(comment_after_giving_delta)
-                        self.all_comments_after_giving_delta_author.to_csv(os.path.join(
-                            save_data_directory, 'all_comments_after_giving_delta_author.csv'))
-                        # change the comment_body in the DF:
-                        if len(split_comment) > 0 and len(new_comment) >= 3:  # didn't remove all comment
-                            self.new_comments_data_after_remove.loc[comment_got_delta.index, 'comment_body'] =\
-                                new_comment
-                            # print(comment_got_delta.comment_body.values[0])
-                            self.new_comments_data_after_remove.loc[comment_got_delta.index,
-                                                                    'before_filter_comment_body'] =\
-                                comment_got_delta.comment_body.values[0]
-                        else:
-                            # 1. remove comment from data
-                            # give chance to short comments
-                            split_comment = comment_after_giving_delta['comment_body'].values[0].split(sep='.')
-                            split_comment = [part for part in split_comment if not any(
-                                delta_token in part.lower() for delta_token in self.after_delta_tokens)]
-                            split_comment = [part for part in split_comment if part not in ['', '___', ' ', '_']]
-                            new_comment = '.'.join(split_comment)
+
+                # for the case that the comment_got_delta already deleted like in branch 861972, comment dcloowd
+                if comment_got_delta.shape[0] > 0:
+                    if int(comment_got_delta.delta.values[0]) == 1:  # the comment before the current comment got delta
+                        comment_got_delta_author = comment_got_delta.comment_author
+                        comment_after_giving_delta_author = comment_after_giving_delta.comment_author
+                        # the same user got delta and responded to the delta and wrote one of the after_delta_tokens
+                        if (comment_got_delta_author.values == comment_after_giving_delta_author.values) and\
+                                (any(delta_token in comment_after_giving_delta['comment_body'][
+                                    comment_after_giving_delta.index[0]].lower()
+                                     for delta_token in self.after_delta_tokens)):
+                            # remove after_delta_tokens from comment
+                            # filter the delta from the comment_body:
+                            split_comment = comment_after_giving_delta['comment_body'].values[0].split(sep='\\n')
+                            # keep only parts without delta token
+                            split_comment = [part for part in split_comment if
+                                             not any(delta_token in part.lower() for delta_token in
+                                                     self.after_delta_tokens)]
+                            new_comment = '\n'.join(split_comment)
+                            comment_after_giving_delta = comment_after_giving_delta.assign(new_comment=new_comment)
+                            self.all_comments_after_giving_delta_author = \
+                                self.all_comments_after_giving_delta_author.append(comment_after_giving_delta)
+                            self.all_comments_after_giving_delta_author.to_csv(os.path.join(
+                                save_data_directory, 'all_comments_after_giving_delta_author.csv'))
+                            # change the comment_body in the DF:
                             if len(split_comment) > 0 and len(new_comment) >= 3:  # didn't remove all comment
-                                self.new_comments_data_after_remove.loc[
-                                    comment_got_delta.index, 'comment_body'] = new_comment
+                                self.new_comments_data_after_remove.loc[comment_got_delta.index, 'comment_body'] =\
+                                    new_comment
                                 # print(comment_got_delta.comment_body.values[0])
                                 self.new_comments_data_after_remove.loc[comment_got_delta.index,
-                                                                        'before_filter_comment_body'] = \
+                                                                        'before_filter_comment_body'] =\
                                     comment_got_delta.comment_body.values[0]
                             else:
-                                # print('comment after delta removed with comment body:',
-                                #       comment_after_giving_delta['comment_body'].values[0])
-                                self.new_comments_data_after_remove = \
-                                    self.new_comments_data_after_remove.drop(comment_after_giving_delta.index)
-                                comments_in_branch = comments_in_branch.drop(comment_after_giving_delta.index)
-                                no_delta_in_data_to_remove =\
-                                    no_delta_in_data_to_remove.append(comment_after_giving_delta)
-                                branch_update.append(comment.branch_id)
+                                # 1. remove comment from data
+                                # give chance to short comments
+                                split_comment = comment_after_giving_delta['comment_body'].values[0].split(sep='.')
+                                split_comment = [part for part in split_comment if not any(
+                                    delta_token in part.lower() for delta_token in self.after_delta_tokens)]
+                                split_comment = [part for part in split_comment if part not in ['', '___', ' ', '_']]
+                                new_comment = '.'.join(split_comment)
+                                if len(split_comment) > 0 and len(new_comment) >= 3:  # didn't remove all comment
+                                    self.new_comments_data_after_remove.loc[
+                                        comment_got_delta.index, 'comment_body'] = new_comment
+                                    # print(comment_got_delta.comment_body.values[0])
+                                    self.new_comments_data_after_remove.loc[comment_got_delta.index,
+                                                                            'before_filter_comment_body'] = \
+                                        comment_got_delta.comment_body.values[0]
+                                else:
+                                    # print('comment after delta removed with comment body:',
+                                    #       comment_after_giving_delta['comment_body'].values[0])
+                                    self.new_comments_data_after_remove = \
+                                        self.new_comments_data_after_remove.drop(comment_after_giving_delta.index)
+                                    comments_in_branch = comments_in_branch.drop(comment_after_giving_delta.index)
+                                    no_delta_in_data_to_remove =\
+                                        no_delta_in_data_to_remove.append(comment_after_giving_delta)
+                                    branch_update.append(comment.branch_id)
 
         # update branch info
         print("{}: start update branches info and comments in branches that was updated".

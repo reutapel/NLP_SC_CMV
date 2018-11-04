@@ -15,6 +15,8 @@ LOG_FILENAME = os.path.join(log_directory,
                             datetime.now().strftime('LogFile_create_features_delta_%d_%m_%Y_%H_%M_%S.log'))
 logging.basicConfig(filename=LOG_FILENAME, level=logging.INFO, )
 
+delta_groups = [1, 2, 3, 7, 8, 12, 13]
+
 
 def branch_group_size(row):
     if row['branch_length'] <= 12:
@@ -32,7 +34,7 @@ def assign_submission_id(row):
 def small_delta(row):
     if row['branch_id'] <= 4:
         return 1
-    elif row['branch_id'] <= 20:
+    elif row['branch_id'] <= 21:
         return 2
     else:
         return 3
@@ -131,7 +133,10 @@ def train_test_split():
     for group_number in range(1, 16):
         rows_in_group = submission_group.loc[submission_group.group_number == group_number]
         print('group size:', rows_in_group.shape)
-        num_to_sample = math.floor(0.32 * rows_in_group.shape[0])
+        if group_number in delta_groups:
+            num_to_sample = math.floor(0.2 * rows_in_group.shape[0])
+        else:
+            num_to_sample = math.floor(0.32 * rows_in_group.shape[0])
         print('num_to_sample:', num_to_sample)
         train_sample = rows_in_group.sample(n=num_to_sample)
         train_submissions += list(train_sample.submission_id.unique())
@@ -162,7 +167,10 @@ def train_test_split():
     for group_number in range(1, 16):
         rows_in_group = submission_group_not_in_train.loc[submission_group_not_in_train.group_number == group_number]
         print('group size:', rows_in_group.shape)
-        num_to_sample = math.floor(0.32 * rows_in_group.shape[0])
+        if group_number in delta_groups:
+            num_to_sample = math.floor(0.2 * rows_in_group.shape[0])
+        else:
+            num_to_sample = math.floor(0.35 * rows_in_group.shape[0])
         print('num_to_sample:', num_to_sample)
         test_sample = rows_in_group.sample(n=num_to_sample)
         test_submissions += list(test_sample.submission_id.unique())
