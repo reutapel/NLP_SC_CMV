@@ -7,6 +7,7 @@ import numpy as np
 
 
 base_directory = os.path.abspath(os.curdir)
+base_directory = os.path.join(base_directory, 'to_server')
 data_directory = os.path.join(base_directory, 'data')
 save_data_directory = os.path.join(data_directory, 'filter_submissions')
 

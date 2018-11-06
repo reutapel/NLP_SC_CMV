@@ -19,16 +19,17 @@ from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from sklearn.feature_extraction.text import TfidfVectorizer
 import pickle
 from doc2vec import Doc2Vec
+import joblib
 # from gensim import corpora
 # from nltk.stem import PorterStemmer
 # from nltk.tokenize import sent_tokenize, word_tokenize
 
 
 base_directory = os.path.abspath(os.curdir)
-base_directory = os.path.join(base_directory, 'to_server')
+# base_directory = os.path.join(base_directory, 'to_server')
 data_directory = os.path.join(base_directory, 'data')
 save_data_directory = os.path.join(data_directory, 'filter_submissions')
-features_directory = os.path.join(base_directory, 'features')
+features_directory = os.path.join(base_directory, 'features', 'small_data_features')
 log_directory = os.path.join(base_directory, 'logs')
 LOG_FILENAME = os.path.join(log_directory,
                             datetime.now().strftime('LogFile_create_features_delta_%d_%m_%Y_%H_%M_%S.log'))
@@ -559,24 +560,16 @@ class CreateFeatures:
         logging.info('{}: Start save features for {}'.
                      format(time.asctime(time.localtime(time.time())), self.data_file_name))
 
-        self.branch_comments_features_df.to_csv(os.path.join(features_directory, 'branch_comments_features_df_' +
-                                                             self.data_file_name + '.csv'))
-        self.branch_comments_features_df.to_hdf(os.path.join(features_directory, 'branch_comments_features_df_' +
-                                                             self.data_file_name + '.h5'), key='df')
+        joblib.dump(self.branch_comments_features_df,
+                    (os.path.join(features_directory, 'branch_comments_features_df_' + self.data_file_name + '.pkl')))
 
-        self.branch_comments_embedded_text_df.to_csv(os.path.join(features_directory,
-                                                                  'branch_comments_embedded_text_df_' +
-                                                                  self.data_file_name + '.csv'))
-        self.branch_comments_embedded_text_df.to_hdf(os.path.join(features_directory,
-                                                                  'branch_comments_embedded_text_df_' +
-                                                                  self.data_file_name + '.h5'), key='df')
+        joblib.dump(self.branch_comments_embedded_text_df,
+                    (os.path.join(features_directory, 'branch_comments_embedded_text_df_' +
+                                  self.data_file_name + '.pkl')))
 
-        self.branch_comments_user_profiles_df.to_csv(os.path.join(features_directory,
-                                                                  'branch_comments_user_profiles_df_' +
-                                                                  self.data_file_name + '.csv'))
-        self.branch_comments_user_profiles_df.to_hdf(os.path.join(features_directory,
-                                                                  'branch_comments_user_profiles_df_' +
-                                                                  self.data_file_name + '.h5'), key='df')
+        joblib.dump(self.branch_comments_user_profiles_df,
+                    (os.path.join(features_directory, 'branch_comments_user_profiles_df_' +
+                                  self.data_file_name + '.pkl')))
 
         with open(os.path.join(features_directory, 'branch_submission_dict_' + self.data_file_name + '.pickle'),
                   'wb') as handle:
@@ -847,13 +840,14 @@ class CreateFeatures:
             print('{}: Clean the {}'.format((time.asctime(time.localtime(time.time()))), self.data_file_name))
             logging.info('{}: Clean the {}'.format((time.asctime(time.localtime(time.time()))), self.data_file_name))
 
-            data_clean = {row['comment_id']: clean(row['comment_body']).split() for index, row in self.data.iterrows()}
+            data_clean = {row['comment_id']: clean(row['comment_body'], row['comment_id']).split()
+                          for index, row in self.data.iterrows()}
 
             # Creating the term dictionary of our corpus, where every unique term is assigned an index.
             print('{}: Create the dictionary for {}'.format((time.asctime(time.localtime(time.time()))),
                                                             self.data_file_name))
             logging.info('{}: Create the dictionary for {}'.format((time.asctime(time.localtime(time.time()))),
-                                                                    self.data_file_name))
+                                                                   self.data_file_name))
             dictionary = gensim.corpora.Dictionary(data_clean.values())
 
             # Converting list of documents (corpus) into Document Term Matrix using dictionary prepared above.
@@ -1050,7 +1044,7 @@ def main():
 
     print('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
-    create_features.create_data('train', is_train=True)
+    create_features.create_data('train_small', is_train=True)
     print('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
     print('data sizes: train data: {}'.format(create_features.data.shape))
     logging.info('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
@@ -1062,7 +1056,7 @@ def main():
     logging.info('{}: Finish creating train data features, start loading test data'.
                  format((time.asctime(time.localtime(time.time())))))
 
-    create_features.create_data('test', is_train=False)
+    create_features.create_data('test_small', is_train=False)
     print('{}: Finish loading the data, start create features'.
           format((time.asctime(time.localtime(time.time())))))
     print('data sizes: test data: {}'.format(create_features.data.shape))
@@ -1075,7 +1069,7 @@ def main():
           format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Finish creating test data features, start loading val data'.
                  format((time.asctime(time.localtime(time.time())))))
-    create_features.create_data('val', is_train=False)
+    create_features.create_data('val_small', is_train=False)
     print('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
     print('data sizes: val data: {}'.format(create_features.data.shape))
     logging.info('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
