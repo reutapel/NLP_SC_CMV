@@ -192,7 +192,8 @@ class RemoveCommentsFromData:
                                                self.branch_comments_info_df.branch_id)) &
                                              (~self.branch_comments_info_df.branch_id.isin(branches_removed))]
         # (self.branch_comments_info_df.comment_body.str.contains(self.join_delta_tokens))
-
+        # 527213, 738678, 748961
+        comments_gave_delta = self.branch_comments_info_df.loc[self.branch_comments_info_df.branch_id == 527213]
         for index, comment in comments_gave_delta.iterrows():
             if not any(delta_token in str(comment['comment_body']) for delta_token in self.delta_tokens):
                 continue
@@ -206,7 +207,7 @@ class RemoveCommentsFromData:
             # keep only parts without delta token
             split_comment = [part for part in split_comment if not
                              any(delta_token in part for delta_token in self.delta_tokens)]
-            split_comment = [part for part in split_comment if part not in ['', '___', ' ', '_']]
+            split_comment = [part for part in split_comment if part not in ['', '___', ' ', '_', '   ']]
             new_comment = '\n'.join(split_comment)
             # change the comment_body in the DF:
             if len(split_comment) > 0 and len(new_comment) >= 3:  # didn't remove all comment
@@ -219,7 +220,7 @@ class RemoveCommentsFromData:
                 split_comment = str(comment['comment_body']).split(sep='.')
                 split_comment = [part for part in split_comment if not any(
                     delta_token in part for delta_token in self.delta_tokens)]
-                split_comment = [part for part in split_comment if part not in ['', '___', ' ', '_']]
+                split_comment = [part for part in split_comment if part not in ['', '___', ' ', '_', '   ']]
                 new_comment = '.'.join(split_comment)
                 if len(split_comment) > 0 and len(new_comment) >= 3:  # didn't remove all comment
                     self.new_comments_data_after_remove.loc[index, 'comment_body'] = new_comment
@@ -284,7 +285,8 @@ class RemoveCommentsFromData:
                                 split_comment = comment_after_giving_delta['comment_body'].values[0].split(sep='.')
                                 split_comment = [part for part in split_comment if not any(
                                     delta_token in part.lower() for delta_token in self.after_delta_tokens)]
-                                split_comment = [part for part in split_comment if part not in ['', '___', ' ', '_']]
+                                split_comment = [part for part in split_comment if part not in ['', '___', ' ', '_',
+                                                                                                '   ']]
                                 new_comment = '.'.join(split_comment)
                                 if len(split_comment) > 0 and len(new_comment) >= 3:  # didn't remove all comment
                                     self.new_comments_data_after_remove.loc[

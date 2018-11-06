@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-data_set = 'train_data'
+data_set = 'val_data'
 base_directory = os.path.abspath(os.curdir)
 data_directory = os.path.join(base_directory, 'data')
 save_data_directory = os.path.join(data_directory, 'filter_submissions')

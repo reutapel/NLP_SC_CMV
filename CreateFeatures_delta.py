@@ -25,6 +25,7 @@ from doc2vec import Doc2Vec
 
 
 base_directory = os.path.abspath(os.curdir)
+base_directory = os.path.join(base_directory, 'to_server')
 data_directory = os.path.join(base_directory, 'data')
 save_data_directory = os.path.join(data_directory, 'filter_submissions')
 features_directory = os.path.join(base_directory, 'features')
@@ -816,7 +817,8 @@ class CreateFeatures:
         print('{}: Clean the data'.format((time.asctime(time.localtime(time.time())))))
         logging.info('{}: Clean the data'.format((time.asctime(time.localtime(time.time())))))
 
-        data_clean = {row['comment_id']: clean(row['comment_body']).split() for index, row in self.data.iterrows()}
+        data_clean = {row['comment_id']: clean(row['comment_body'], row['comment_id']).split()
+                      for index, row in self.data.iterrows()}
 
         # Creating the term dictionary of our corpus, where every unique term is assigned an index.
         print('{}: Create the dictionary'.format((time.asctime(time.localtime(time.time())))))
@@ -1025,14 +1027,14 @@ def percent_of_adj(text):
     return percent_of_adj_pos
 
 
-def clean(text):
+def clean(text, comment_id):
     """
     This function clean a text from stop words and punctuations and them lemmatize the words
     :param str text: the text we want to clean
     :return: str normalized: the cleaned text
     """
     if type(text) != str:
-        print(text)
+        print(text, comment_id)
     text = text.lstrip('b').strip('"').strip("'").strip(">")
     stop_free = " ".join([i for i in text.lower().split() if i not in stop])
     punc_free = "".join(ch for ch in stop_free if ch not in exclude)
@@ -1048,7 +1050,7 @@ def main():
 
     print('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
-    create_features.create_data('train_small', is_train=True)
+    create_features.create_data('train', is_train=True)
     print('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
     print('data sizes: train data: {}'.format(create_features.data.shape))
     logging.info('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
@@ -1060,7 +1062,7 @@ def main():
     logging.info('{}: Finish creating train data features, start loading test data'.
                  format((time.asctime(time.localtime(time.time())))))
 
-    create_features.create_data('test_small', is_train=False)
+    create_features.create_data('test', is_train=False)
     print('{}: Finish loading the data, start create features'.
           format((time.asctime(time.localtime(time.time())))))
     print('data sizes: test data: {}'.format(create_features.data.shape))
@@ -1073,7 +1075,7 @@ def main():
           format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Finish creating test data features, start loading val data'.
                  format((time.asctime(time.localtime(time.time())))))
-    create_features.create_data('val_small', is_train=False)
+    create_features.create_data('val', is_train=False)
     print('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
     print('data sizes: val data: {}'.format(create_features.data.shape))
     logging.info('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
