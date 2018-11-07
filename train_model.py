@@ -10,13 +10,18 @@ from tqdm import tqdm
 from time import gmtime, strftime
 from sklearn import metrics
 import joblib
+import pickle
 import matplotlib.pyplot as plt
 from pylab import savefig
 from matplotlib.ticker import MaxNLocator
 import sys
-old_stdout = sys.stdout
-log_file = open("train_model.log","w")
-sys.stdout = log_file
+import os
+import ast
+
+# old_stdout = sys.stdout
+# log_file = open("train_model.log", "w")
+# sys.stdout = log_file
+
 
 # TODO: F.mse_loss(size_average, reduce) : parameters that affect if we get average values per batch : sum or average
 
@@ -256,25 +261,27 @@ class TrainModel:
 
 def main():
 
-    debug = 1
+    debug = 0
+    base_dir = os.path.abspath(os.curdir)
+    features_dir = os.path.join(base_dir, "features", "small_data_features")
     if not debug:
         # load train data
-        branch_comments_embedded_text_df_train = joblib.load("branch_comments_embedded_text_df_train")
-        branch_comments_features_df_train = joblib.load("branch_comments_features_df_train")
-        branch_comments_user_profiles_df_train = joblib.load("branch_comments_user_profiles_df_train")
-        branch_submission_dict_train = joblib.load("branch_submission_dict_train")
-        submission_data_dict_train = joblib.load("submission_data_dict_train")
-        branch_deltas_data_dict_train = joblib.load("branch_deltas_data_dict_train")
-        branches_lengths_list_train = joblib.load("branches_lengths_list_train")
+        branch_comments_embedded_text_df_train = joblib.load(os.path.join(features_dir, "branch_comments_embedded_text_df_train.csv"))
+        branch_comments_features_df_train = joblib.load(os.path.join(features_dir, "branch_comments_features_df_train.csv"))
+        branch_comments_user_profiles_df_train = joblib.load(os.path.join(features_dir,"branch_comments_user_profiles_df_train.csv"))
+        branch_submission_dict_train = joblib.load(os.path.join(features_dir, "branch_submission_dict_train.pickle"))
+        submission_data_dict_train = joblib.load(os.path.join(features_dir, "submission_data_dict_train.pickle"))
+        branch_deltas_data_dict_train = joblib.load(os.path.join(features_dir, "branch_deltas_data_dict_train.pickle"))
+        branches_lengths_list_train = joblib.load(os.path.join(features_dir, "branches_lengths_list_train.txt"))
 
         # load test data
-        branch_comments_embedded_text_df_test = joblib.load("branch_comments_embedded_text_df_test")
-        branch_comments_features_df_test = joblib.load("branch_comments_features_df_test")
-        branch_comments_user_profiles_df_test = joblib.load("branch_comments_user_profiles_df_test")
-        branch_submission_dict_test = joblib.load("branch_submission_dict_test")
-        submission_data_dict_test = joblib.load("submission_data_dict_test")
-        branch_deltas_data_dict_test = joblib.load("branch_deltas_data_dict_test")
-        branches_lengths_list_test = joblib.load("branches_lengths_list_test")
+        branch_comments_embedded_text_df_test = joblib.load(os.path.join(features_dir,"branch_comments_embedded_text_df_test.csv"))
+        branch_comments_features_df_test = joblib.load(os.path.join(features_dir,"branch_comments_features_df_test.csv"))
+        branch_comments_user_profiles_df_test = joblib.load(os.path.join(features_dir,"branch_comments_user_profiles_df_test.csv"))
+        branch_submission_dict_test = joblib.load(os.path.join(features_dir,"branch_submission_dict_test.pickle"))
+        submission_data_dict_test = joblib.load(os.path.join(features_dir,"submission_data_dict_test.pickle"))
+        branch_deltas_data_dict_test = joblib.load(os.path.join(features_dir,"branch_deltas_data_dict_test.pickle"))
+        branches_lengths_list_test = joblib.load(os.path.join(features_dir,"branches_lengths_list_test.txt"))
 
     else:
         # DEBUG
@@ -349,11 +356,11 @@ def main():
 
     # train and test model
     train_model.train()
-    joblib.dump(train_model.measurements_dict, "measurements_dict.pkl")
+    pickle.dump(train_model.measurements_dict, "measurements_dict.pkl")
     train_model.plot_loss(train_model.num_epochs, train_model.train_loss_list, train_model.test_loss_list)
-
-    sys.stdout = old_stdout
-    log_file.close()
+    #
+    # sys.stdout = old_stdout
+    # log_file.close()
 
 
 if __name__ == '__main__':
