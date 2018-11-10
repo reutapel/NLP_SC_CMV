@@ -302,7 +302,7 @@ class CreateFeatures:
                       'with branch index', index)
                 logging.info('{}: Start branch id {} with branch index {}'
                              .format(time.asctime(time.localtime(time.time())), branch_id, index))
-                branch = self.all_branches.loc[self.all_branches.branch_id == branch_id]
+            branch = self.all_branches.loc[self.all_branches.branch_id == branch_id]
             is_delta_in_branch = int(bool(branch.num_delta.values))  # 1 if there is deltas and 0 otherwise
             number_of_deltas_in_branch = branch.num_delta.values[0]
             deltas_comments_location_in_branch = list(self.data.loc[(self.data.branch_id == branch.branch_id.values[0]) &
