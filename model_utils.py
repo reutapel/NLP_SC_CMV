@@ -3,6 +3,7 @@ import torch.utils.data as dt
 #import torchtext
 #import spacy
 #import gensim
+import torch.nn.functional as F
 import numbers
 
 
@@ -49,7 +50,8 @@ class CustomDataset(dt.Dataset):
         :return: (data point elements, label)
         """
 
-        x = [self.branch_comments_embedded_text_tensor[index], self.branch_comments_features_tensor[index],
+        x = [self.branch_comments_embedded_text_tensor[index],
+             self.branch_comments_features_tensor[index],
              self.branch_comments_user_profiles_tensor[index],
              tr.Tensor(self.submission_data_dict[self.branch_submission_dict[index][0]][0]),
              tr.Tensor(self.submission_data_dict[self.branch_submission_dict[index][0]][1]),
@@ -84,8 +86,7 @@ class CustomDataset(dt.Dataset):
         # if values of df are vectors
         else:
             df_value_length = len(df.iloc[0, 0])
-            df_content = df.values
-            tensor = tr.Tensor([[column for column in row] for row in df_content])
+            tensor = tr.Tensor([[column for column in row] for row in df.values])
             # print("new tensor shape is", df_rows_num, ",", df_columns_num, ",", df_value_length)
 
             return tensor
