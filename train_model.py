@@ -145,7 +145,7 @@ class TrainModel:
                 train_predictions = tr.cat((train_predictions, predicted))
 
                 # calculate loss
-                print("calc loss")
+                # print("calc loss")
                 loss = self.criterion(outputs, labels)
                 if first_batch:
                     first_batch = False
@@ -261,7 +261,7 @@ class TrainModel:
 
 def main():
 
-    debug = 0
+    debug = 1
     base_dir = os.path.abspath(os.curdir)
     features_dir = os.path.join(base_dir, "features", "small_data_features")
     if not debug:
@@ -356,7 +356,7 @@ def main():
 
     # train and test model
     train_model.train()
-    pickle.dump(train_model.measurements_dict, "measurements_dict.pkl")
+    joblib.dump(train_model.measurements_dict, "measurements_dict.pkl")
     train_model.plot_loss(train_model.num_epochs, train_model.train_loss_list, train_model.test_loss_list)
     #
     # sys.stdout = old_stdout
