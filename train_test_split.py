@@ -7,7 +7,7 @@ import numpy as np
 
 
 base_directory = os.path.abspath(os.curdir)
-base_directory = os.path.join(base_directory, 'to_server')
+# base_directory = os.path.join(base_directory, 'to_server')
 data_directory = os.path.join(base_directory, 'data')
 save_data_directory = os.path.join(data_directory, 'filter_submissions')
 
@@ -94,7 +94,9 @@ def train_test_split():
     # load comments and branches
     branch_comments_info_df = pd.read_csv(
         os.path.join(save_data_directory, 'comments_label_branch_info_after_remove.csv'))
-    branch_numbers_df = pd.read_csv(os.path.join(save_data_directory, 'new_branches_data_after_remove.csv'))
+    branch_numbers_df = branch_comments_info_df.copy()
+    # pd.read_csv(os.path.join(save_data_directory, 'new_branches_data_after_remove.csv'))
+    branch_numbers_df = branch_numbers_df.drop_duplicates(subset='branch_id')
     branch_numbers_df = branch_numbers_df.loc[(branch_numbers_df['branch_length'] > 1)]
     branches_to_use = branch_numbers_df.branch_id.unique()
     branch_comments_info_df = branch_comments_info_df.loc[branch_comments_info_df.branch_id.isin(branches_to_use)]

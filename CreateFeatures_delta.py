@@ -26,7 +26,7 @@ import joblib
 
 
 base_directory = os.path.abspath(os.curdir)
-# base_directory = os.path.join(base_directory, 'to_server')
+base_directory = os.path.join(base_directory, 'to_server')
 data_directory = os.path.join(base_directory, 'data')
 save_data_directory = os.path.join(data_directory, 'filter_submissions')
 features_directory = os.path.join(base_directory, 'features', 'small_data_features')
@@ -58,12 +58,13 @@ class CreateFeatures:
         self.number_of_topics = number_of_topics
 
         # Load branches data
-        branch_columns = ['branch_id', 'branch_key', 'num_delta', 'submission_id', 'num_comments_removed',
-                          'pct_comments_removed', 'branch_length', 'delta_index_in_branch',
+        branch_columns = ['branch_id', 'num_delta', 'submission_id', 'branch_length', 'delta_index_in_branch',
                           'num_comments_after_delta']
         self.branch_numbers_df = pd.read_csv(os.path.join(save_data_directory,
-                                                          'new_branches_data_after_remove.csv'),
+                                                          'comments_label_branch_info_after_remove.csv'),
                                              usecols=branch_columns)
+        self.branch_numbers_df = self.branch_numbers_df.drop_duplicates(subset='branch_id')
+
         # self.branch_numbers_df.columns = ['branch_id', 'branch_key', 'num_delta', 'submission_id',
         #                                   'num_comments_removed', 'pct_comments_removed', 'branch_length',
         #                                   'delta_index_in_branch', 'num_comments_after_delta']
@@ -1044,7 +1045,7 @@ def main():
 
     print('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
-    create_features.create_data('train_small', is_train=True)
+    create_features.create_data('train`', is_train=True)
     print('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
     print('data sizes: train data: {}'.format(create_features.data.shape))
     logging.info('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
@@ -1056,7 +1057,7 @@ def main():
     logging.info('{}: Finish creating train data features, start loading test data'.
                  format((time.asctime(time.localtime(time.time())))))
 
-    create_features.create_data('test_small', is_train=False)
+    create_features.create_data('test', is_train=False)
     print('{}: Finish loading the data, start create features'.
           format((time.asctime(time.localtime(time.time())))))
     print('data sizes: test data: {}'.format(create_features.data.shape))
@@ -1069,7 +1070,7 @@ def main():
           format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Finish creating test data features, start loading val data'.
                  format((time.asctime(time.localtime(time.time())))))
-    create_features.create_data('val_small', is_train=False)
+    create_features.create_data('val', is_train=False)
     print('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
     print('data sizes: val data: {}'.format(create_features.data.shape))
     logging.info('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))

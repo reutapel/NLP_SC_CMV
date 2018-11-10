@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-data_set = 'val_data'
+data_set = 'comments_label_branch_info_after_remove'
 base_directory = os.path.abspath(os.curdir)
 data_directory = os.path.join(base_directory, 'data')
 save_data_directory = os.path.join(data_directory, 'filter_submissions')
@@ -85,7 +85,8 @@ class CalculateStatistics:
         """
         self.statistics = pd.DataFrame(columns=['mean', 'STD', 'median', 'sum', 'count', 'min', 'max'])
         self.branch_numbers_df = pd.read_csv(os.path.join(
-            save_data_directory, 'new_branches_data_after_remove.csv'))
+            save_data_directory, 'comments_label_branch_info_after_remove.csv'))
+        self.branch_numbers_df = self.branch_numbers_df.drop_duplicates(subset='branch_id')
         self.branch_numbers_df = self.branch_numbers_df[['branch_id', 'branch_length', 'num_delta',
                                                          'num_comments_after_delta', 'delta_index_in_branch',
                                                          'submission_id']]

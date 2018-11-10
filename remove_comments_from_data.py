@@ -7,7 +7,6 @@ import time
 base_directory = os.path.abspath(os.curdir)
 data_directory = os.path.join(base_directory, 'data')
 save_data_directory = os.path.join(data_directory, 'filter_submissions')
-branch_statistics_directory = os.path.join(base_directory, 'branch_statistics')
 
 
 def unicodetoascii(text):
@@ -156,6 +155,10 @@ class RemoveCommentsFromData:
         Update branch info
         :return:
         """
+
+        new_branches_data_after_remove_shape = self.new_branches_data_after_remove.shape[0]
+        print('row 160: new_branches_data_after_remove is:', new_branches_data_after_remove_shape)
+
         # remove comments with null user or body, numeric body, removed/deleted body and body with length 1
         print("{}: start remove no gave delta".format(time.asctime(time.localtime(time.time()))))
         data_to_remove =\
@@ -172,6 +175,12 @@ class RemoveCommentsFromData:
             ~self.new_comments_data_after_remove.branch_id.isin(branches_delta_deleted)]
         self.new_branches_data_after_remove = self.new_branches_data_after_remove.loc[
             ~self.new_branches_data_after_remove.branch_id.isin(branches_delta_deleted)]
+
+        # check if the shape changed
+        if new_branches_data_after_remove_shape != self.new_branches_data_after_remove.shape[0]:
+            new_branches_data_after_remove_shape = self.new_branches_data_after_remove.shape[0]
+            print('branches_delta_deleted shape:', branches_delta_deleted.shape)
+            print('row 183: new_branches_data_after_remove shape is:', new_branches_data_after_remove_shape)
         branches_removed = list(branches_delta_deleted)
 
         # get comments without delta to remove that are not in the branches with delta that has removed
@@ -338,6 +347,10 @@ class RemoveCommentsFromData:
                                                     'num_comments_removed'] = num_comments_removed
             self.new_branches_data_after_remove.loc[self.new_branches_data_after_remove.branch_id == branch,
                                                     'pct_comments_removed'] = num_comments_removed/branch_length
+            # check if the shape changed
+            if new_branches_data_after_remove_shape != self.new_branches_data_after_remove.shape[0]:
+                new_branches_data_after_remove_shape = self.new_branches_data_after_remove.shape[0]
+                print('row 353: new_branches_data_after_remove shape is:', new_branches_data_after_remove_shape)
 
             # update num_comments_after_delta and delta_index_in_branch
             delta_comment = update_comments_in_branch.loc[update_comments_in_branch['delta'] == 1]
@@ -366,6 +379,10 @@ class RemoveCommentsFromData:
                                                     'original_delta_index_in_branch'] =\
                 self.new_branches_data_after_remove.loc[self.new_branches_data_after_remove.branch_id == branch,
                                                         'delta_index_in_branch']
+            # check if the shape changed
+            if new_branches_data_after_remove_shape != self.new_branches_data_after_remove.shape[0]:
+                new_branches_data_after_remove_shape = self.new_branches_data_after_remove.shape[0]
+                print('row 386: new_branches_data_after_remove shape is:', new_branches_data_after_remove_shape)
 
         print("{}: Finish remove comments function".format(time.asctime(time.localtime(time.time()))))
 
