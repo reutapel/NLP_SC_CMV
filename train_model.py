@@ -266,18 +266,18 @@ def main():
     features_dir = os.path.join(base_dir, "features", "small_data_features")
     if not debug:
         # load train data
-        branch_comments_embedded_text_df_train = joblib.load(os.path.join(features_dir, "branch_comments_embedded_text_df_train.csv"))
-        branch_comments_features_df_train = joblib.load(os.path.join(features_dir, "branch_comments_features_df_train.csv"))
-        branch_comments_user_profiles_df_train = joblib.load(os.path.join(features_dir,"branch_comments_user_profiles_df_train.csv"))
+        branch_comments_embedded_text_df_train = joblib.load(os.path.join(features_dir, "branch_comments_embedded_text_df_train.pkl"))
+        branch_comments_features_df_train = joblib.load(os.path.join(features_dir, "branch_comments_features_df_train.pkl"))
+        branch_comments_user_profiles_df_train = joblib.load(os.path.join(features_dir,"branch_comments_user_profiles_df_train.pkl"))
         branch_submission_dict_train = joblib.load(os.path.join(features_dir, "branch_submission_dict_train.pickle"))
         submission_data_dict_train = joblib.load(os.path.join(features_dir, "submission_data_dict_train.pickle"))
         branch_deltas_data_dict_train = joblib.load(os.path.join(features_dir, "branch_deltas_data_dict_train.pickle"))
         branches_lengths_list_train = joblib.load(os.path.join(features_dir, "branches_lengths_list_train.txt"))
 
         # load test data
-        branch_comments_embedded_text_df_test = joblib.load(os.path.join(features_dir,"branch_comments_embedded_text_df_test.csv"))
-        branch_comments_features_df_test = joblib.load(os.path.join(features_dir,"branch_comments_features_df_test.csv"))
-        branch_comments_user_profiles_df_test = joblib.load(os.path.join(features_dir,"branch_comments_user_profiles_df_test.csv"))
+        branch_comments_embedded_text_df_test = joblib.load(os.path.join(features_dir,"branch_comments_embedded_text_df_test.pkl"))
+        branch_comments_features_df_test = joblib.load(os.path.join(features_dir,"branch_comments_features_df_test.pkl"))
+        branch_comments_user_profiles_df_test = joblib.load(os.path.join(features_dir,"branch_comments_user_profiles_df_test.pkl"))
         branch_submission_dict_test = joblib.load(os.path.join(features_dir,"branch_submission_dict_test.pickle"))
         submission_data_dict_test = joblib.load(os.path.join(features_dir,"submission_data_dict_test.pickle"))
         branch_deltas_data_dict_test = joblib.load(os.path.join(features_dir,"branch_deltas_data_dict_test.pickle"))
