@@ -17,6 +17,7 @@ from matplotlib.ticker import MaxNLocator
 import sys
 import os
 import ast
+import numbers
 
 # old_stdout = sys.stdout
 # log_file = open("train_model.log", "w")
@@ -259,9 +260,17 @@ class TrainModel:
         savefig('loss_graph.png')
 
 
+def replace_0_with_list(df, len_list_in_cell):
+    for i, row in enumerate(df.values):
+        for j, col in enumerate(row):
+            if isinstance(col, numbers.Number):
+                df.loc[i, j] = [0] * len_list_in_cell
+    return df
+
+
 def main():
 
-    debug = 1
+    debug = 0
     base_dir = os.path.abspath(os.curdir)
     features_dir = os.path.join(base_dir, "features", "small_data_features")
     if not debug:
@@ -282,6 +291,27 @@ def main():
         submission_data_dict_test = joblib.load(os.path.join(features_dir,"submission_data_dict_test.pickle"))
         branch_deltas_data_dict_test = joblib.load(os.path.join(features_dir,"branch_deltas_data_dict_test.pickle"))
         branches_lengths_list_test = joblib.load(os.path.join(features_dir,"branches_lengths_list_test.txt"))
+
+        # debug only ---temp ----
+        branch_comments_embedded_text_df_train = replace_0_with_list(branch_comments_embedded_text_df_train,
+                                                                     len(branch_comments_embedded_text_df_train.loc[0,0]))
+        branch_comments_features_df_train = replace_0_with_list(branch_comments_features_df_train,
+                                                                     len(branch_comments_features_df_train.loc[0,0]))
+        branch_comments_user_profiles_df_train = replace_0_with_list(branch_comments_user_profiles_df_train,
+                                                                     len(branch_comments_user_profiles_df_train.loc[0,0]))
+
+        branch_comments_embedded_text_df_test = replace_0_with_list(branch_comments_embedded_text_df_test,
+                                                                     len(branch_comments_embedded_text_df_test.loc[0,0]))
+        branch_comments_features_df_test = replace_0_with_list(branch_comments_features_df_test,
+                                                                     len(branch_comments_features_df_test.loc[0,0]))
+        branch_comments_user_profiles_df_test = replace_0_with_list(branch_comments_user_profiles_df_test,
+                                                                     len(branch_comments_user_profiles_df_test.loc[0,0]))
+        joblib.dump(branch_comments_embedded_text_df_train, 'branch_comments_embedded_text_df_train_debug.pkl')
+        joblib.dump(branch_comments_features_df_train, 'branch_comments_features_df_train_debug.pkl')
+        joblib.dump(branch_comments_user_profiles_df_train, 'branch_comments_user_profiles_df_train_debug.pkl')
+        joblib.dump(branch_comments_embedded_text_df_test, 'branch_comments_embedded_text_df_test_debug.pkl')
+        joblib.dump(branch_comments_features_df_test, 'branch_comments_features_df_test_debug.pkl')
+        joblib.dump(branch_comments_user_profiles_df_test, 'branch_comments_user_profiles_df_test_debug.pkl')
 
     else:
         # DEBUG

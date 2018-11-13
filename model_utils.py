@@ -5,6 +5,7 @@ import torch.utils.data as dt
 #import gensim
 import torch.nn.functional as F
 import numbers
+import numpy as np
 
 
 class CustomDataset(dt.Dataset):
@@ -49,7 +50,7 @@ class CustomDataset(dt.Dataset):
         :param index: index of data point to be retrieved
         :return: (data point elements, label)
         """
-
+        # if type(self.submission_data_dict[self.branch_submission_dict[index][0]][1]) == np.ndarray
         x = [self.branch_comments_embedded_text_tensor[index],
              self.branch_comments_features_tensor[index],
              self.branch_comments_user_profiles_tensor[index],
