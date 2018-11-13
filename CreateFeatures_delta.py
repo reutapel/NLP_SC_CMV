@@ -28,7 +28,7 @@ import joblib
 base_directory = os.path.abspath(os.curdir)
 # base_directory = os.path.join(base_directory, 'to_server')
 data_directory = os.path.join(base_directory, 'data')
-save_data_directory = os.path.join(data_directory, 'filter_submissions')
+save_data_directory = os.path.join(data_directory, 'filter_submissions', 'small_data')
 features_directory = os.path.join(base_directory, 'features', 'small_data_features')
 log_directory = os.path.join(base_directory, 'logs')
 LOG_FILENAME = os.path.join(log_directory,
@@ -88,10 +88,12 @@ class CreateFeatures:
         self.branch_comments_embedded_text_df = None
 
         # Create comments_features
-        self.comment_features_columns = ['comment_id', 'comment_real_depth', 'comment_len', 'time_between_sub_com',
+        self.comment_features_columns = ['comment_real_depth', 'comment_len', 'time_between_sub_com',
                                          'percent_adj', 'time_between_comment_first_comment', 'submission_num_comments',
                                          'time_ratio_first_comment', 'nltk_com_sen_pos', 'nltk_com_sen_neg',
                                          'nltk_com_sen_neutral', 'nltk_sim_sen', 'is_quote', 'number_of_branches']
+        self.comment_features_columns_len = len(self.comment_features_columns) + number_of_topics
+        print('comment_features_columns_len:', self.comment_features_columns_len)
         self.branch_comments_features_df = None
 
         # Create comments_features
@@ -172,7 +174,7 @@ class CreateFeatures:
         # fill features df with list of 0 according to the max branch length
         number_of_branches = self.branch_ids.shape[0]
         self.branch_comments_features_df = pd.concat([pd.Series(np.zeros(
-            shape=(number_of_branches, len(self.comment_features_columns))).tolist())] * self.max_branch_length, axis=1)
+            shape=(number_of_branches, self.comment_features_columns_len)).tolist())] * self.max_branch_length, axis=1)
         self.branch_comments_user_profiles_df = pd.concat([pd.Series(np.zeros(
             shape=(number_of_branches, len(self.comments_user_features_columns))).tolist())] * self.max_branch_length,
                                                           axis=1)
@@ -381,8 +383,8 @@ class CreateFeatures:
             embedded_submission_text = self.doc2vec_model.infer_doc_vector(submission.submission_title_and_body)
 
             self.submission_data_dict[submission.submission_id] = [embedded_submission_text,
-                                                                   np.array(submission_features)[0],
-                                                                   np.array(submitter_features)[0]]
+                                                                   np.array(submission_features)[0].astype(float),
+                                                                   np.array(submitter_features)[0].astype(float)]
 
         return
 
@@ -435,7 +437,6 @@ class CreateFeatures:
         # comment_submission_groupby.columns = ['submission_num_comments', 'submission_id']
         #
         # self.data = self.data.merge(comment_submission_groupby, on='submission_id')
-
         for branch_index, branch_id in self.branch_ids.iteritems():
             if branch_index % 100 == 0:
                 print(time.asctime(time.localtime(time.time())), ': Start branch_id', branch_id,
@@ -532,9 +533,9 @@ class CreateFeatures:
 
                 # insert comment and comment user features to features DF
                 self.branch_comments_features_df.loc[branch_index, comment_index] =\
-                    np.array(comment_features.loc[:, comment_features.columns != 'comment_id'])[0]
+                    np.array(comment_features.loc[:, comment_features.columns != 'comment_id'])[0].astype(float)
                 self.branch_comments_user_profiles_df.loc[branch_index, comment_index] =\
-                    np.array(comment_user_features)[0]
+                    np.array(comment_user_features)[0].astype(float)
 
         # self.branch_comments_features_df = self.branch_comments_features_df.fillna(
         #     np.zeros(shape=len(self.comment_features_columns)))
@@ -1053,7 +1054,7 @@ def main():
 
     print('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
-    create_features.create_data('train_small', is_train=True)
+    create_features.create_data('train', is_train=True)
     print('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
     print('data sizes: train data: {}'.format(create_features.data.shape))
     logging.info('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
@@ -1065,7 +1066,7 @@ def main():
     logging.info('{}: Finish creating train data features, start loading test data'.
                  format((time.asctime(time.localtime(time.time())))))
 
-    create_features.create_data('test_small', is_train=False)
+    create_features.create_data('test', is_train=False)
     print('{}: Finish loading the data, start create features'.
           format((time.asctime(time.localtime(time.time())))))
     print('data sizes: test data: {}'.format(create_features.data.shape))
@@ -1078,7 +1079,7 @@ def main():
           format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Finish creating test data features, start loading val data'.
                  format((time.asctime(time.localtime(time.time())))))
-    create_features.create_data('val_small', is_train=False)
+    create_features.create_data('val', is_train=False)
     print('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
     print('data sizes: val data: {}'.format(create_features.data.shape))
     logging.info('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
