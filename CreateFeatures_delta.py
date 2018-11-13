@@ -88,10 +88,12 @@ class CreateFeatures:
         self.branch_comments_embedded_text_df = None
 
         # Create comments_features
-        self.comment_features_columns = ['comment_id', 'comment_real_depth', 'comment_len', 'time_between_sub_com',
+        self.comment_features_columns = ['comment_real_depth', 'comment_len', 'time_between_sub_com',
                                          'percent_adj', 'time_between_comment_first_comment', 'submission_num_comments',
                                          'time_ratio_first_comment', 'nltk_com_sen_pos', 'nltk_com_sen_neg',
                                          'nltk_com_sen_neutral', 'nltk_sim_sen', 'is_quote', 'number_of_branches']
+        self.comment_features_columns_len = len(self.comment_features_columns) + number_of_topics
+        print('comment_features_columns_len:', self.comment_features_columns_len)
         self.branch_comments_features_df = None
 
         # Create comments_features
@@ -172,7 +174,7 @@ class CreateFeatures:
         # fill features df with list of 0 according to the max branch length
         number_of_branches = self.branch_ids.shape[0]
         self.branch_comments_features_df = pd.concat([pd.Series(np.zeros(
-            shape=(number_of_branches, len(self.comment_features_columns))).tolist())] * self.max_branch_length, axis=1)
+            shape=(number_of_branches, self.comment_features_columns_len)).tolist())] * self.max_branch_length, axis=1)
         self.branch_comments_user_profiles_df = pd.concat([pd.Series(np.zeros(
             shape=(number_of_branches, len(self.comments_user_features_columns))).tolist())] * self.max_branch_length,
                                                           axis=1)
@@ -435,7 +437,6 @@ class CreateFeatures:
         # comment_submission_groupby.columns = ['submission_num_comments', 'submission_id']
         #
         # self.data = self.data.merge(comment_submission_groupby, on='submission_id')
-
         for branch_index, branch_id in self.branch_ids.iteritems():
             if branch_index % 100 == 0:
                 print(time.asctime(time.localtime(time.time())), ': Start branch_id', branch_id,
