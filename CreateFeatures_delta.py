@@ -26,7 +26,7 @@ import joblib
 
 
 base_directory = os.path.abspath(os.curdir)
-base_directory = os.path.join(base_directory, 'to_server')
+# base_directory = os.path.join(base_directory, 'to_server')
 data_directory = os.path.join(base_directory, 'data')
 save_data_directory = os.path.join(data_directory, 'filter_submissions')
 features_directory = os.path.join(base_directory, 'features', 'small_data_features')
@@ -130,6 +130,7 @@ class CreateFeatures:
         self.train_data_term_matrix = None
         self.lad_model = None
         self.doc2vec_model = None
+        self.doc2vec_vector_size = 50
         self.submission_comments_dict = None
         self.branch_comments_dict = None
         self.submission_data_dict = dict()
@@ -159,6 +160,7 @@ class CreateFeatures:
 
         # get the max number of comments in a branch
         self.max_branch_length = self.all_branches['branch_length'].max()
+
         # get the branch ids sort by their length from the longest to the shortest
         self.branch_ids = self.all_branches[['branch_id', 'branch_length']].drop_duplicates()
         self.branch_ids = self.branch_ids.sort_values(by='branch_length', ascending=False)
@@ -166,6 +168,14 @@ class CreateFeatures:
         self.num_branches = len(self.branches_lengths_list)
         self.branch_ids = self.branch_ids.reset_index()
         self.branch_ids = self.branch_ids['branch_id']
+
+        # fill features df with list of 0 according to the max branch length
+        number_of_branches = self.branch_ids.shape[0]
+        self.branch_comments_features_df = pd.concat([pd.Series(np.zeros(
+            shape=(number_of_branches, len(self.comment_features_columns))).tolist())] * self.max_branch_length, axis=1)
+        self.branch_comments_user_profiles_df = pd.concat([pd.Series(np.zeros(
+            shape=(number_of_branches, len(self.comments_user_features_columns))).tolist())] * self.max_branch_length,
+                                                          axis=1)
 
         # Features calculated for all the data frame:
         self.data['comment_len'] = self.data['comment_body'].str.len()
@@ -180,12 +190,6 @@ class CreateFeatures:
 
         # define branch_comments_raw_text_df with number of columns as the max_branch_length
         self.branch_comments_embedded_text_df = pd.DataFrame(columns=np.arange(self.max_branch_length))
-
-        # Create comments_features
-        self.branch_comments_features_df = pd.DataFrame(pd.DataFrame(columns=np.arange(self.max_branch_length)))
-
-        # Create comments_features
-        self.branch_comments_user_profiles_df = pd.DataFrame(pd.DataFrame(columns=np.arange(self.max_branch_length)))
 
         # Create vocabulary of the text of the data
         # data after drop duplications:
@@ -225,7 +229,8 @@ class CreateFeatures:
             comments_body = self.data['comment_body']
             train_data_doc2vec = submission_body.append(comments_body, ignore_index=True)
             train_data_doc2vec = pd.Series(train_data_doc2vec.unique())
-            self.doc2vec_model = Doc2Vec(fname='', linux=False, use_file=False, data=train_data_doc2vec)
+            self.doc2vec_model = Doc2Vec(fname='', linux=False, use_file=False, data=train_data_doc2vec,
+                                         vector_size=self.doc2vec_vector_size)
 
         # create dict with the data for each submission:
         start_time = time.time()
@@ -302,7 +307,7 @@ class CreateFeatures:
                       'with branch index', index)
                 logging.info('{}: Start branch id {} with branch index {}'
                              .format(time.asctime(time.localtime(time.time())), branch_id, index))
-                branch = self.all_branches.loc[self.all_branches.branch_id == branch_id]
+            branch = self.all_branches.loc[self.all_branches.branch_id == branch_id]
             is_delta_in_branch = int(bool(branch.num_delta.values))  # 1 if there is deltas and 0 otherwise
             number_of_deltas_in_branch = branch.num_delta.values[0]
             deltas_comments_location_in_branch = list(self.data.loc[(self.data.branch_id == branch.branch_id.values[0]) &
@@ -398,7 +403,8 @@ class CreateFeatures:
                     self.doc2vec_model.infer_doc_vector(comment['comment_body'])
             branch_comments_body = branch_comments_body['embedded_comment_text']
             if branch_comments_body.shape[0] < self.max_branch_length:
-                append_zero = pd.Series(np.zeros(shape=(self.max_branch_length - branch_comments_body.shape[0])))
+                append_zero = pd.Series(np.zeros(
+                    shape=(self.max_branch_length - branch_comments_body.shape[0], self.doc2vec_vector_size)).tolist())
                 branch_comments_body = pd.concat([branch_comments_body, append_zero], ignore_index=True)
             else:
                 branch_comments_body = branch_comments_body.reset_index()['embedded_comment_text']
@@ -530,8 +536,10 @@ class CreateFeatures:
                 self.branch_comments_user_profiles_df.loc[branch_index, comment_index] =\
                     np.array(comment_user_features)[0]
 
-        self.branch_comments_features_df = self.branch_comments_features_df.fillna(0)
-        self.branch_comments_user_profiles_df = self.branch_comments_user_profiles_df.fillna(0)
+        # self.branch_comments_features_df = self.branch_comments_features_df.fillna(
+        #     np.zeros(shape=len(self.comment_features_columns)))
+        # self.branch_comments_user_profiles_df = self.branch_comments_user_profiles_df.fillna(
+        #     np.zeros(shape=len(self.comments_user_features_columns)))
 
         return
 
@@ -1045,7 +1053,7 @@ def main():
 
     print('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
-    create_features.create_data('train`', is_train=True)
+    create_features.create_data('train_small', is_train=True)
     print('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
     print('data sizes: train data: {}'.format(create_features.data.shape))
     logging.info('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
@@ -1057,7 +1065,7 @@ def main():
     logging.info('{}: Finish creating train data features, start loading test data'.
                  format((time.asctime(time.localtime(time.time())))))
 
-    create_features.create_data('test', is_train=False)
+    create_features.create_data('test_small', is_train=False)
     print('{}: Finish loading the data, start create features'.
           format((time.asctime(time.localtime(time.time())))))
     print('data sizes: test data: {}'.format(create_features.data.shape))
@@ -1070,7 +1078,7 @@ def main():
           format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Finish creating test data features, start loading val data'.
                  format((time.asctime(time.localtime(time.time())))))
-    create_features.create_data('val', is_train=False)
+    create_features.create_data('val_small', is_train=False)
     print('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
     print('data sizes: val data: {}'.format(create_features.data.shape))
     logging.info('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
