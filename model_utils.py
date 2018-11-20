@@ -54,9 +54,9 @@ class CustomDataset(dt.Dataset):
         x = [self.branch_comments_embedded_text_tensor[index],
              self.branch_comments_features_tensor[index],
              self.branch_comments_user_profiles_tensor[index],
-             tr.Tensor(self.submission_data_dict[self.branch_submission_dict[index][0]][0]),
-             tr.Tensor(self.submission_data_dict[self.branch_submission_dict[index][0]][1]),
-             tr.Tensor(self.submission_data_dict[self.branch_submission_dict[index][0]][2]),
+             tr.Tensor(self.submission_data_dict[self.branch_submission_dict[index][0]][0].astype('float')),
+             tr.Tensor(self.submission_data_dict[self.branch_submission_dict[index][0]][1].astype('float')),
+             tr.Tensor(self.submission_data_dict[self.branch_submission_dict[index][0]][2].astype('float')),
              tr.Tensor(self.branch_submission_dict[index][1]),
              self.branches_lengths[index]]
         y = self.branch_deltas_data_dict[index][0]
