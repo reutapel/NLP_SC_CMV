@@ -25,11 +25,12 @@ import joblib
 # from nltk.tokenize import sent_tokenize, word_tokenize
 
 
-base_directory = os.path.abspath(os.curdir)
+base_directory = os.getenv('PWD')
+print(base_directory)
 # base_directory = os.path.join(base_directory, 'to_server')
 data_directory = os.path.join(base_directory, 'data')
-save_data_directory = os.path.join(data_directory, 'filter_submissions', 'small_data')
-features_directory = os.path.join(base_directory, 'features', 'small_data_features')
+save_data_directory = os.path.join(data_directory, 'filter_submissions')
+features_directory = os.path.join(base_directory, 'features')
 log_directory = os.path.join(base_directory, 'logs')
 LOG_FILENAME = os.path.join(log_directory,
                             datetime.now().strftime('LogFile_create_features_delta_%d_%m_%Y_%H_%M_%S.log'))
@@ -93,7 +94,6 @@ class CreateFeatures:
                                          'time_ratio_first_comment', 'nltk_com_sen_pos', 'nltk_com_sen_neg',
                                          'nltk_com_sen_neutral', 'nltk_sim_sen', 'is_quote', 'number_of_branches']
         self.comment_features_columns_len = len(self.comment_features_columns) + number_of_topics
-        print('comment_features_columns_len:', self.comment_features_columns_len)
         self.branch_comments_features_df = None
 
         # Create comments_features
