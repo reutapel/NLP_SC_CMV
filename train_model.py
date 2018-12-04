@@ -10,13 +10,10 @@ from tqdm import tqdm
 from time import gmtime, strftime
 from sklearn import metrics
 import joblib
-import pickle
 import matplotlib.pyplot as plt
 from pylab import savefig
 from matplotlib.ticker import MaxNLocator
-import sys
 import os
-import ast
 import numbers
 
 # old_stdout = sys.stdout
@@ -71,7 +68,7 @@ class TrainModel:
                                 fc1, fc2, fc1_droput, fc2_dropout)
 
         # on the model.parameters will be performed the update by stochastic gradient descent
-        self.optimizer = tr.optim.SGD(self.model.parameters(), lr=learning_rate)
+        self.optimizer = tr.optim.Adam(self.model.parameters(), lr=learning_rate)
 
         # create datasets
         self.train_dataset = self.create_dataset(train_data)
@@ -133,13 +130,13 @@ class TrainModel:
                 outputs, sorted_idx, batch_size = self.model(data_points)
                 # TODO: understand impact of packed padded to loss, like function loss in model.py
 
-                outputs = outputs.reshape(batch_size, -1).float()
+                outputs = outputs.view(batch_size, -1).float()
 
                 # sort labels
-                labels = labels[sorted_idx].reshape(batch_size, -1).float()
+                labels = labels[sorted_idx].view(batch_size, -1).float()
 
                 # calculate for measurements
-                predicted = (outputs > 0.5).float() * 1
+                predicted = ((outputs > 0.5) * 1).float()
                 total += labels.size(0)
                 correct += (predicted == labels).sum()
                 train_labels = tr.cat((train_labels, labels))
@@ -148,12 +145,12 @@ class TrainModel:
                 # calculate loss
                 # print("calc loss")
                 loss = self.criterion(outputs, labels)
+                # if want graph per epoch
                 if first_batch:
                     first_batch = False
-                    self.train_loss_list.append(loss.data[0].item())
+                    self.train_loss_list.append(loss.item())
                 else:
-                    self.train_loss_list[epoch] += loss.data[0].item()
-
+                    self.train_loss_list[epoch] += loss.item()
 
                 # initialize gradient so only current batch will be summed and then backward
                 self.optimizer.zero_grad()
@@ -161,14 +158,22 @@ class TrainModel:
                 # calculate gradients
                 loss.backward()
 
+                # # debug gradients - self.model.parameters() contains every parameters that is defined in init
+                # # and needs to have gradients, if something is defined in init and not used it's gradients will be 0
+                # check gradients that are closed to input.. last in backwards
+                # for p in self.model.parameters():
+                #     print("gradient of p")
+                #     print(p.grad.norm)
+
                 # update parameters : tensor - learning_rate*gradient
                 self.optimizer.step()
 
                 if (i+1) % 100 == 0:
                     print('Epoch: [%d%d], Step: [%d%d], Loss: %.4f' % (epoch+1, self.num_epochs, i+1,
                                                                        len(self.train_dataset)//self.batch_size,
-                                                                       loss.data[0]))
-
+                                                                       loss))
+            # average batch losses per epoch
+            self.train_loss_list[epoch] = self.train_loss_list[epoch]/(i+1)
             # calculate measurements on train data
             self.calc_measurements(correct, total, train_labels, train_predictions, epoch,  "train")
             self.test(epoch)
@@ -186,33 +191,40 @@ class TrainModel:
 
         # doesn't save history for backwards, turns off dropouts
         self.model.eval()
+
         first_batch = True
 
         correct = 0
         total = 0
         test_labels = tr.Tensor()
         test_predictions = tr.Tensor()
-        for data_points, labels in self.test_loader:
+        # make sure no gradients - memory efficiency - no allocation of tensors to the gradients
+        with(tr.no_grad()):
 
-            outputs, sorted_idx, batch_size = self.model(data_points)
-            outputs = outputs.reshape(batch_size, -1).float()
+            for i, (data_points, labels) in tqdm(enumerate(self.test_loader), desc='batch'):
 
-            labels = labels[sorted_idx].reshape(batch_size, -1).float()
+                outputs, sorted_idx, batch_size = self.model(data_points)
+                outputs = outputs.view(batch_size, -1).float()
 
-            # calculate loss
-            loss = self.criterion(outputs, labels)
-            if first_batch:
-                first_batch = False
-                self.test_loss_list.append(loss.data[0].item())
-            else:
-                self.test_loss_list[epoch] += loss.data[0].item()
+                labels = labels[sorted_idx].view(batch_size, -1).float()
 
-            predicted = (outputs > 0.5).float() * 1
-            total += labels.size(0)
-            correct += (predicted == labels).sum()
-            test_labels = tr.cat((test_labels, labels))
-            # TODO: think why it was with outputs: test_predictions = tr.cat((test_predictions, outputs))
-            test_predictions = tr.cat((test_predictions, predicted))
+                # calculate loss
+                loss = self.criterion(outputs, labels)
+                # if want graph per epoch
+                if first_batch:
+                    first_batch = False
+                    self.test_loss_list.append(loss.data[0].item())
+                else:
+                    self.test_loss_list[epoch] += loss.data[0].item()
+
+                predicted = (outputs > 0.5).float() * 1
+                total += labels.size(0)
+                correct += (predicted == labels).sum()
+                test_labels = tr.cat((test_labels, labels))
+                # TODO: think why it was with outputs: test_predictions = tr.cat((test_predictions, outputs))
+                test_predictions = tr.cat((test_predictions, predicted))
+
+        self.test_loss_list[epoch] = self.test_loss_list[epoch] / (i + 1)
 
         # calculate measurements on test data
         self.calc_measurements(correct, total, test_labels, test_predictions, epoch, "test")
@@ -222,8 +234,8 @@ class TrainModel:
         labels = labels.detach().numpy()
         pred = pred.detach().numpy()
         print("calculate measurements on ", dataset)
-        accuracy = correct / total
-        print('Accuracy: %d %%' % (100 * accuracy))
+        accuracy = float(correct) / float(total)
+        print('Accuracy: ', accuracy)
         fpr, tpr, thresholds = metrics.roc_curve(labels, pred,
                                                  pos_label=1)
         auc = metrics.auc(fpr, tpr)
@@ -242,6 +254,7 @@ class TrainModel:
         # Visualize loss history
         plt.plot(list(range(epoch_count)), train_loss, 'g--')
         plt.plot(list(range(epoch_count)), test_loss, 'b-')
+        plt.title('Loss per epoch')
         plt.legend(['Training Loss', 'Test Loss'])
 
         # set ticks as int
@@ -275,61 +288,47 @@ def main():
     features_dir = os.path.join(base_dir, "features", "small_data_features")
     if not debug:
         # load train data
-        branch_comments_embedded_text_df_train = joblib.load(os.path.join(features_dir, "branch_comments_embedded_text_df_train.pkl"))
-        branch_comments_features_df_train = joblib.load(os.path.join(features_dir, "branch_comments_features_df_train.pkl"))
-        branch_comments_user_profiles_df_train = joblib.load(os.path.join(features_dir,"branch_comments_user_profiles_df_train.pkl"))
+        branch_comments_embedded_text_df_train = joblib.load(os.path.join(features_dir,
+                                                                          "branch_comments_embedded_text_df_train.pkl"))
+        branch_comments_features_df_train = joblib.load(os.path.join(features_dir,
+                                                                     "branch_comments_features_df_train.pkl"))
+        branch_comments_user_profiles_df_train = joblib.load(os.path.join(features_dir,
+                                                                          "branch_comments_user_profiles_df_train.pkl"))
         branch_submission_dict_train = joblib.load(os.path.join(features_dir, "branch_submission_dict_train.pickle"))
         submission_data_dict_train = joblib.load(os.path.join(features_dir, "submission_data_dict_train.pickle"))
         branch_deltas_data_dict_train = joblib.load(os.path.join(features_dir, "branch_deltas_data_dict_train.pickle"))
         branches_lengths_list_train = joblib.load(os.path.join(features_dir, "branches_lengths_list_train.txt"))
 
         # load test data
-        branch_comments_embedded_text_df_test = joblib.load(os.path.join(features_dir,"branch_comments_embedded_text_df_test.pkl"))
-        branch_comments_features_df_test = joblib.load(os.path.join(features_dir,"branch_comments_features_df_test.pkl"))
-        branch_comments_user_profiles_df_test = joblib.load(os.path.join(features_dir,"branch_comments_user_profiles_df_test.pkl"))
-        branch_submission_dict_test = joblib.load(os.path.join(features_dir,"branch_submission_dict_test.pickle"))
-        submission_data_dict_test = joblib.load(os.path.join(features_dir,"submission_data_dict_test.pickle"))
-        branch_deltas_data_dict_test = joblib.load(os.path.join(features_dir,"branch_deltas_data_dict_test.pickle"))
-        branches_lengths_list_test = joblib.load(os.path.join(features_dir,"branches_lengths_list_test.txt"))
-
-        # debug only ---temp ----
-        branch_comments_embedded_text_df_train = replace_0_with_list(branch_comments_embedded_text_df_train,
-                                                                     len(branch_comments_embedded_text_df_train.loc[0,0]))
-        branch_comments_features_df_train = replace_0_with_list(branch_comments_features_df_train,
-                                                                     len(branch_comments_features_df_train.loc[0,0]))
-        branch_comments_user_profiles_df_train = replace_0_with_list(branch_comments_user_profiles_df_train,
-                                                                     len(branch_comments_user_profiles_df_train.loc[0,0]))
-
-        branch_comments_embedded_text_df_test = replace_0_with_list(branch_comments_embedded_text_df_test,
-                                                                     len(branch_comments_embedded_text_df_test.loc[0,0]))
-        branch_comments_features_df_test = replace_0_with_list(branch_comments_features_df_test,
-                                                                     len(branch_comments_features_df_test.loc[0,0]))
-        branch_comments_user_profiles_df_test = replace_0_with_list(branch_comments_user_profiles_df_test,
-                                                                     len(branch_comments_user_profiles_df_test.loc[0,0]))
-        joblib.dump(branch_comments_embedded_text_df_train, 'branch_comments_embedded_text_df_train_debug.pkl')
-        joblib.dump(branch_comments_features_df_train, 'branch_comments_features_df_train_debug.pkl')
-        joblib.dump(branch_comments_user_profiles_df_train, 'branch_comments_user_profiles_df_train_debug.pkl')
-        joblib.dump(branch_comments_embedded_text_df_test, 'branch_comments_embedded_text_df_test_debug.pkl')
-        joblib.dump(branch_comments_features_df_test, 'branch_comments_features_df_test_debug.pkl')
-        joblib.dump(branch_comments_user_profiles_df_test, 'branch_comments_user_profiles_df_test_debug.pkl')
+        branch_comments_embedded_text_df_test = joblib.load(os.path.join(features_dir,
+                                                                         "branch_comments_embedded_text_df_test.pkl"))
+        branch_comments_features_df_test = joblib.load(os.path.join(features_dir, "branch_comments_features_df_test.pkl"))
+        branch_comments_user_profiles_df_test = joblib.load(os.path.join(features_dir,
+                                                                         "branch_comments_user_profiles_df_test.pkl"))
+        branch_submission_dict_test = joblib.load(os.path.join(features_dir, "branch_submission_dict_test.pickle"))
+        submission_data_dict_test = joblib.load(os.path.join(features_dir, "submission_data_dict_test.pickle"))
+        branch_deltas_data_dict_test = joblib.load(os.path.join(features_dir, "branch_deltas_data_dict_test.pickle"))
+        branches_lengths_list_test = joblib.load(os.path.join(features_dir, "branches_lengths_list_test.txt"))
 
     else:
         # DEBUG
         # load train data
-        text = {'col1': [[1., 2.], [3., 4.], [5., 6.]], 'col2': [[7., 8.], [9., 1.], [1., 5.]], 'col3': [[1., 4.], [1., 6.], [0., 0.]],
-                'col4': [[9., 2.], [0., 0.], [0., 0.]]}
-        comment_features = {'col1': [[10., 20., 34.], [30., 40., 54.], [50., 60., 70.]], 'col2': [[70., 80., 82.], [90., 10., 43.],
+        text = {0: [[1., 2.], [3., 4.], [5., 6.]], 1: [[7., 8.], [9., 1.], [1., 5.]], 2: [[1., 4.], [1., 6.], [0., 0.]],
+                3: [[9., 2.], [0., 0.], [0., 0.]]}
+        comment_features = {0: [[10., 20., 34.], [30., 40., 54.], [50., 60., 70.]], 1: [[70., 80., 82.], [90., 10., 43.],
                                                                                          [11., 12., 65.]],
-                            'col3': [[13., 14., 76.], [15., 16., 17.], [0., 0., 0.]],
-                            'col4': [[19., 20., 65.], [0., 0., 0.], [0., 0., 0.]]}
-        users_profiles = {'col1': [[111., 222.], [333., 444.], [555., 666.]], 'col2': [[777., 888.], [999., 100.], [111., 122.]],
-                          'col3': [[133., 144.], [155., 166.], [0., 0.]],
-                          'col4': [[190., 200.], [0., 0.], [0., 0.]]}
+                            2: [[13., 14., 76.], [15., 16., 17.], [0., 0., 0.]],
+                            3: [[19., 20., 65.], [0., 0., 0.], [0., 0., 0.]]}
+        users_profiles = {0: [[111., 222.], [333., 444.], [555., 666.]], 1: [[777., 888.], [999., 100.], [111., 122.]],
+                          2: [[133., 144.], [155., 166.], [0., 0.]],
+                          3: [[190., 200.], [0., 0.], [0., 0.]]}
         branch_comments_embedded_text_df_train = pd.DataFrame(data=text)
         branch_comments_features_df_train = pd.DataFrame(data=comment_features)
         branch_comments_user_profiles_df_train = pd.DataFrame(data=users_profiles)
-        branch_submission_dict_train = {0: ['6ax', [-4., 4., -44., 44.]], 1: ['6ax', [-5., 5., -55., 55.]], 2: ['3f9', [-2., 2., -22., 22.]]}
-        submission_data_dict_train = {'6ax': [[12., 21.], [6., 9.], [1., 11., 111.]], '3f9': [[13., 31.], [66., 99.], [1., 11., 111.]]}
+        branch_submission_dict_train = {0: ['6ax', [-4., 4., -44., 44.]], 1: ['6ax', [-5., 5., -55., 55.]], 2: ['3f9',
+                                                                                                                [-2., 2., -22., 22.]]}
+        submission_data_dict_train = {'6ax': [[12., 21.], [6., 9.], [1., 11., 111.]], '3f9': [[13., 31.], [66., 99.],
+                                                                                              [1., 11., 111.]]}
         branch_deltas_data_dict_train = {0: [1., 2, [1, 3]], 1: [0., 0, []], 2: [1., 1, [1]]}
         branches_lengths_list_train = [4, 3, 2]
 
@@ -337,7 +336,8 @@ def main():
         branch_comments_embedded_text_df_test = pd.DataFrame(data=text)
         branch_comments_features_df_test = pd.DataFrame(data=comment_features)
         branch_comments_user_profiles_df_test = pd.DataFrame(data=users_profiles)
-        branch_submission_dict_test = {0: ['6ax', [-4, 4, -44, 44]], 1: ['6ax', [-5, 5, -55, 55]], 2: ['3f9', [-2, 2, -22, 22]]}
+        branch_submission_dict_test = {0: ['6ax', [-4, 4, -44, 44]], 1: ['6ax', [-5, 5, -55, 55]], 2: ['3f9', [-2, 2,
+                                                                                                               -22, 22]]}
         submission_data_dict_test = {'6ax': [[12, 21], [6, 9], [1, 11, 111]], '3f9': [[13, 31], [66, 99], [1, 11, 111]]}
         branch_deltas_data_dict_test = {0: [1, 2, ], 1: [0, 0, 0], 2: [1, 1, ]}
         branches_lengths_list_test = [4, 3, 2]
@@ -351,10 +351,11 @@ def main():
                 branch_deltas_data_dict_test, branches_lengths_list_test
 
     # define hyper parameters of learning phase
+    # log makes differences expand to higher numbers because of it's behaivor between 0 to 1
     criterion = nn.BCEWithLogitsLoss()
-    learning_rate = 0.01
-    batch_size = 2
-    num_epochs = 3
+    learning_rate = 0.001 # range 0.0003-0.001 batch grows -> lr grows
+    batch_size = 24  # TRY BATCH SIZE 100
+    num_epochs = 100
     num_labels = 2
     fc1 = 32
     fc2 = 16
@@ -362,21 +363,25 @@ def main():
     fc2_dropout = 0.5
 
     # define LSTM layers hyperparameters
-    init_lstm_text = InitLstm(input_size=2, hidden_size=3, num_layers=3, batch_first=True)
-    init_lstm_comments = InitLstm(input_size=3, hidden_size=3, num_layers=5, batch_first=True)
-    init_lstm_users = InitLstm(input_size=2, hidden_size=3, num_layers=4, batch_first=True)
+    init_lstm_text = InitLstm(input_size=len(branch_comments_embedded_text_df_train.loc[0,0]), hidden_size=20,
+                              num_layers=2, batch_first=True)
+    init_lstm_comments = InitLstm(input_size=len(branch_comments_features_df_train.loc[0,0]), hidden_size=10,
+                                  num_layers=2, batch_first=True)
+    init_lstm_users = InitLstm(input_size=len(branch_comments_user_profiles_df_train.loc[0,0]), hidden_size=10,
+                               num_layers=2, batch_first=True)
 
     # define conv layers hyperparameters
-    init_conv_text = InitConv1d(in_channels=1, out_channels=4, kernel_size=1, stride=1, padding=0,
-                                leaky_relu_alpha=0.001)
-    init_conv_sub_features = InitConv1d(in_channels=1, out_channels=4, kernel_size=1, stride=1, padding=0,
-                                        leaky_relu_alpha=0.001)
-    init_conv_sub_profile_features = InitConv1d(in_channels=1, out_channels=4, kernel_size=1, stride=1, padding=0,
-                                                leaky_relu_alpha=0.001)
+    init_conv_text = InitConv1d(in_channels=1, out_channels=9, kernel_size=3, stride=1, padding=0,
+                                leaky_relu_alpha=0.2)
+    init_conv_sub_features = InitConv1d(in_channels=1, out_channels=9, kernel_size=3, stride=1, padding=0,
+                                        leaky_relu_alpha=0.2)
+    init_conv_sub_profile_features = InitConv1d(in_channels=1, out_channels=9, kernel_size=3, stride=1, padding=0,
+                                                leaky_relu_alpha=0.2)
 
-    input_size_text_sub = 2
-    input_size_sub_features = 6  # submission features + branch features
-    input_size_sub_profile_features = 3
+    input_size_text_sub = len(branch_comments_embedded_text_df_train.loc[0,0])
+    input_size_sub_features = len(submission_data_dict_train[list(submission_data_dict_train.keys())[0]][1]) + \
+                              len(branch_submission_dict_train[0][1])  # submission features + branch features
+    input_size_sub_profile_features = len(submission_data_dict_train[list(submission_data_dict_train.keys())[0]][2])
 
     # create training instance
     train_model = TrainModel(train_data, test_data, learning_rate, criterion, batch_size, num_epochs, num_labels, fc1,

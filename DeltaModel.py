@@ -39,13 +39,13 @@ class DeltaModel(nn.Module):
         self.init_lstm_comments = init_lstm_comments
         self.init_lstm_users = init_lstm_users
 
-        # initialize LSTM's hidden states
-        self.hidden_text = self.init_hidden(self.init_lstm_text.num_layers, batch_size,
-                                            self.init_lstm_text.hidden_size)
-        self.hidden_comments = self.init_hidden(self.init_lstm_comments.num_layers, batch_size,
-                                                self.init_lstm_comments.hidden_size)
-        self.hidden_users = self.init_hidden(self.init_lstm_users.num_layers, batch_size,
-                                             self.init_lstm_users.hidden_size)
+        # # initialize LSTM's hidden states
+        # self.hidden_text = self.init_hidden(self.init_lstm_text.num_layers, batch_size,
+        #                                     self.init_lstm_text.hidden_size)
+        # self.hidden_comments = self.init_hidden(self.init_lstm_comments.num_layers, batch_size,
+        #                                         self.init_lstm_comments.hidden_size)
+        # self.hidden_users = self.init_hidden(self.init_lstm_users.num_layers, batch_size,
+        #                                      self.init_lstm_users.hidden_size)
 
         # define layers
         # static layers definition- aggregates the parameters for the derivatives
@@ -175,30 +175,31 @@ class DeltaModel(nn.Module):
         batch_size, seq_len, _ = branch_comments_embedded_text.size()
 
         # initialize hidden between forward runs
-        self.hidden_text = self.init_hidden(self.init_lstm_text.num_layers, batch_size,
+        hidden_text = self.init_hidden(self.init_lstm_text.num_layers, batch_size,
                                             self.init_lstm_text.hidden_size)
-        self.hidden_comments = self.init_hidden(self.init_lstm_comments.num_layers, batch_size,
+        hidden_comments = self.init_hidden(self.init_lstm_comments.num_layers, batch_size,
                                                 self.init_lstm_comments.hidden_size)
-        self.hidden_users = self.init_hidden(self.init_lstm_users.num_layers, batch_size,
+        hidden_users = self.init_hidden(self.init_lstm_users.num_layers, batch_size,
                                              self.init_lstm_users.hidden_size)
 
         # concatenate submission features and branch features as the convolution conv_sub_features input
         submission_branch_concat = tr.cat((submission_features, branch_features_list), 1)
 
         # pack_padded_sequence so that padded items in the sequence won't be shown to the LSTM, run the LSTM and unpack
-        out_lstm_text = self.run_lstm_padded_packed(branch_comments_embedded_text, branches_lengths
+        out_lstm_text = self.run_lstm_padded_packed(branch_comments_embedded_text, branches_lengths, hidden_text
                                                     , 'text')
 
         out_lstm_comments = self.run_lstm_padded_packed(branch_comment_features_tensor,
-                                                        branches_lengths, 'comments')
+                                                        branches_lengths, hidden_comments, 'comments')
 
         out_lstm_users = self.run_lstm_padded_packed(branch_comments_user_profiles_tensor,
-                                                     branches_lengths, 'users')
+                                                     branches_lengths,hidden_users,  'users')
 
         # reshape data for convolutions to add middle dimension of 1 input channels
-        submission_embedded_text = submission_embedded_text.reshape(batch_size, 1, -1)
-        submission_branch_concat = submission_branch_concat.reshape(batch_size, 1, -1)
-        submitter_profile_features = submitter_profile_features.reshape(batch_size, 1, -1)
+        # TODO: think maybe to replace with 1 conv of 3 channels
+        submission_embedded_text = submission_embedded_text.view(batch_size, 1, -1)
+        submission_branch_concat = submission_branch_concat.view(batch_size, 1, -1)
+        submitter_profile_features = submitter_profile_features.view(batch_size, 1, -1)
 
         # run through convolutions and activation functions
         out_sub_text = self.leaky_relu_text(self.conv_sub_text(submission_embedded_text))
@@ -248,32 +249,34 @@ class DeltaModel(nn.Module):
         # if self.hparams.on_gpu:
         #     hidden_h = hidden_h.cuda()
         #     hidden_c = hidden_c.cuda()
-
-        hidden_h = hidden_h
-        hidden_c = hidden_c
+        #TODO: why>>?
+        # hidden_h = hidden_h
+        # hidden_c = hidden_c
 
         return hidden_h, hidden_c
 
-    def run_lstm_padded_packed(self, lstm_input, input_lengths, lstm_type):
+    def run_lstm_padded_packed(self, lstm_input, input_lengths, hidden, lstm_type):
         """
         this method uses the pack padded sequence functions to run the batch input of different sizes, padded with zeros
          in the LSTM
         :param lstm_input: the LSTM input
         :param input_lengths: the lengths of each sequence in the input batch
+        :param hidden: the hidden h and c of the LSTM
         :param lstm_type: which LSTM to run
         :return: the padded pack sequence output
         """
+        # if not good, to batch of size 1 and no step in train
 
         # pack_padded_sequence so that padded items in the sequence won't be shown to the LSTM
         lstm_input = tr.nn.utils.rnn.pack_padded_sequence(lstm_input, input_lengths, batch_first=True)
 
         # run through LSTM_text
         if lstm_type == 'text':
-            out_lstm, self.hidden_text = self.lstm_text(lstm_input, self.hidden_text)
+            out_lstm, hidden_text = self.lstm_text(lstm_input, hidden)
         elif lstm_type == 'comments':
-            out_lstm, self.hidden_comments = self.lstm_comments(lstm_input, self.hidden_comments)
+            out_lstm, hidden_comments = self.lstm_comments(lstm_input, hidden)
         else:
-            out_lstm, self.hidden_users = self.lstm_users(lstm_input, self.hidden_users)
+            out_lstm, hidden_users = self.lstm_users(lstm_input, hidden)
 
         # undo the packing operation
         out_lstm, _ = tr.nn.utils.rnn.pad_packed_sequence(out_lstm, batch_first=True)
@@ -282,12 +285,10 @@ class DeltaModel(nn.Module):
         # take last hidden output for every sequence
         last_outputs = [(idx, i.item() - 1) for idx, i in enumerate(input_lengths)]
         first = 1
+        last_hidden_batch_list = list()
         for last_hidden_seq in last_outputs:
-            if first:
-                first = 0
-                last_hidden_batch = out_lstm[last_hidden_seq]
-            else:
-                last_hidden_batch = tr.stack((last_hidden_batch, out_lstm[last_hidden_seq]),0)
+            last_hidden_batch_list.append(out_lstm[last_hidden_seq])
+        last_hidden_batch = tr.stack(tuple(last_hidden_batch_list), 0)
 
         return last_hidden_batch
 

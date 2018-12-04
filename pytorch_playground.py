@@ -285,35 +285,40 @@ import torch.optim as optim
 #
 # print(list(range(3)))
 
-import torch
-import torch.nn.functional as F
+# import torch
+# import torch.nn.functional as F
+# import joblib
+# import os
+#
+# base_dir = os.path.abspath(os.curdir)
+# features_dir = os.path.join(base_dir, "features", "small_data_features")
+#
+# branch_comments_embedded_text_df_train = joblib.load(os.path.join(features_dir, "branch_comments_embedded_text_df_train.pkl"))
+# # max_len = branch_comments_embedded_text_df_train.shape[1]
+# # final_tens = tr.Tensor
+# # first_row = 1
+# # for row in branch_comments_embedded_text_df_train.values:
+# #     branch = list()
+# #     branch_len = 0
+# #     for col in row:
+# #         if len(col) > 0:
+# #             branch.append(col)
+# #             branch_len += 1
+# #     tensor = tr.Tensor(branch)
+# #     F.pad(tensor, pad=(0, max_len-branch_len), mode='constant', value=0)
+# #     if first_row:
+# #         first_row = 0
+# #         first_tensor = tr.Tensor(branch)
+# #     if not first_row:
+# #         stacked = tr.stack([first_tensor, tensor], dim=0)
+#
+# # print(stacked.shape)
+#
+# branch_submission_dict_train = joblib.load(os.path.join(features_dir, "branch_submission_dict_train.pickle"))
+#
+# print("check")
+
 import joblib
-import os
-
-base_dir = os.path.abspath(os.curdir)
-features_dir = os.path.join(base_dir, "features", "small_data_features")
-
-branch_comments_embedded_text_df_train = joblib.load(os.path.join(features_dir, "branch_comments_embedded_text_df_train.pkl"))
-# max_len = branch_comments_embedded_text_df_train.shape[1]
-# final_tens = tr.Tensor
-# first_row = 1
-# for row in branch_comments_embedded_text_df_train.values:
-#     branch = list()
-#     branch_len = 0
-#     for col in row:
-#         if len(col) > 0:
-#             branch.append(col)
-#             branch_len += 1
-#     tensor = tr.Tensor(branch)
-#     F.pad(tensor, pad=(0, max_len-branch_len), mode='constant', value=0)
-#     if first_row:
-#         first_row = 0
-#         first_tensor = tr.Tensor(branch)
-#     if not first_row:
-#         stacked = tr.stack([first_tensor, tensor], dim=0)
-
-# print(stacked.shape)
-
-branch_submission_dict_train = joblib.load(os.path.join(features_dir, "branch_submission_dict_train.pickle"))
-
-print("check")
+[accuracy, auc, precision, recall]
+measurements_dict = joblib.load('measurements_dict.pkl')
+print("bug")
