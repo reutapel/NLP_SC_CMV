@@ -30,6 +30,7 @@ print(base_directory)
 # base_directory = os.path.join(base_directory, 'to_server')
 data_directory = os.path.join(base_directory, 'data')
 save_data_directory = os.path.join(data_directory, 'filter_submissions')
+train_test_data_directory = os.path.join(data_directory, 'filter_submissions')
 features_directory = os.path.join(base_directory, 'features')
 log_directory = os.path.join(base_directory, 'logs')
 LOG_FILENAME = os.path.join(log_directory,
@@ -141,24 +142,41 @@ class CreateFeatures:
 
         return
 
-    def create_data(self, data_file_name, is_train):
+    def create_data(self, data_file_name, is_train, data=None):
         """
         This function create the data based on the data_file_name
         :param str data_file_name: the data to create (train, test, val)
         :param bool is_train: if this is the train data
+        :param data: the data itself, if already load it
         :return:
         """
         self.data_file_name = data_file_name
         self.is_train = is_train
         # all the data, with label
-        self.data = pd.read_csv(os.path.join(save_data_directory, data_file_name + '_data.csv'), skipinitialspace=True,
-                                usecols=self.data_columns)
+        if data is None:
+            self.data = pd.read_csv(os.path.join(train_test_data_directory, data_file_name + '_data.csv'),
+                                    skipinitialspace=True, usecols=self.data_columns)
+            self.data['comment_created_utc'] = self.data['comment_created_utc'].astype(int)
+            self.data['time_between'] = self.data['comment_created_utc'] - self.data['submission_created_utc']
+
+            # Features calculated for all the data frame:
+            self.data['comment_len'] = self.data['comment_body'].str.len()
+
+            # get number of branches for each comment
+            comment_branch = self.data[['comment_id', 'branch_id']]
+            comment_branch_groupby = comment_branch.groupby(by='comment_id').count()
+            comment_branch_groupby['comment_id'] = comment_branch_groupby.index
+            comment_branch_groupby.columns = ['number_of_branches', 'comment_id']
+
+            self.data = self.data.merge(comment_branch_groupby, on='comment_id')
+
+        else:
+            self.data = data
+
         self.data_pre_process()
 
-        self.data['submission_created_utc'] = self.data['submission_created_utc'].astype(int)
-        self.data['comment_created_utc'] = self.data['comment_created_utc'].astype(int)
+        # self.data['submission_created_utc'] = self.data['submission_created_utc'].astype(int)
         self.all_submissions['submission_created_utc'] = self.all_submissions['submission_created_utc'].astype(int)
-        self.data['time_between'] = self.data['comment_created_utc'] - self.data['submission_created_utc']
 
         # get the max number of comments in a branch
         self.max_branch_length = self.all_branches['branch_length'].max()
@@ -178,17 +196,6 @@ class CreateFeatures:
         self.branch_comments_user_profiles_df = pd.concat([pd.Series(np.zeros(
             shape=(number_of_branches, len(self.comments_user_features_columns))).tolist())] * self.max_branch_length,
                                                           axis=1)
-
-        # Features calculated for all the data frame:
-        self.data['comment_len'] = self.data['comment_body'].str.len()
-
-        # get number of branches for each comment
-        comment_branch = self.data[['comment_id', 'branch_id']]
-        comment_branch_groupby = comment_branch.groupby(by='comment_id').count()
-        comment_branch_groupby['comment_id'] = comment_branch_groupby.index
-        comment_branch_groupby.columns = ['number_of_branches', 'comment_id']
-
-        self.data = self.data.merge(comment_branch_groupby, on='comment_id')
 
         # define branch_comments_raw_text_df with number of columns as the max_branch_length
         self.branch_comments_embedded_text_df = pd.DataFrame(columns=np.arange(self.max_branch_length))
@@ -565,6 +572,11 @@ class CreateFeatures:
         # create branch features
         self.create_branch_submission_dict()
 
+    def save_features(self):
+        """
+        This function save the features for the current data set
+        :return:
+        """
         # save features
         print(time.asctime(time.localtime(time.time())), ': Start save features for', self.data_file_name)
         logging.info('{}: Start save features for {}'.
@@ -1055,11 +1067,40 @@ def main():
     print('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
     create_features.create_data('train', is_train=True)
-    print('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
+    print('{}: Finish loading the data'.format((time.asctime(time.localtime(time.time())))))
     print('data sizes: train data: {}'.format(create_features.data.shape))
-    logging.info('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
+    logging.info('{}: Finish loading the data'.format((time.asctime(time.localtime(time.time())))))
     logging.info('data sizes: train data: {}'.format(create_features.data.shape))
-    create_features.create_all_features()
+    print('{}: Split train data to create features'.format((time.asctime(time.localtime(time.time())))))
+    logging.info('{}: Split train data to create features'.format((time.asctime(time.localtime(time.time())))))
+
+    all_train_data = create_features.data
+    data_submissions = all_train_data.submission_id.unique()
+    print('number of submissions in train data:', data_submissions.shape[0])
+    number_to_choose = round(data_submissions.shape[0] / 3)
+    last_group_size = data_submissions.shape[0] - number_to_choose*2
+    group_sizes = [number_to_choose, number_to_choose, last_group_size]
+    for group_id, group_size in enumerate(group_sizes):
+        if group_id == 0:
+            prev_group_size = 0
+        else:
+            prev_group_size = sum(group_sizes[:group_id])
+        submissions_to_choose = data_submissions[prev_group_size:prev_group_size + group_size]
+        data_set = all_train_data.loc[all_train_data.submission_id.isin(submissions_to_choose)].copy()
+        print('{}: Start loading train data, group number {}'.
+              format((time.asctime(time.localtime(time.time()))), group_id))
+        logging.info('{}: Start loading train data, group number {}'.
+                     format((time.asctime(time.localtime(time.time()))), group_id))
+
+        create_features.create_data('train_' + str(group_id), is_train=False, data=data_set)
+        print('{}: Finish loading the data, start create features'.
+              format((time.asctime(time.localtime(time.time())))))
+        print('data sizes: train data, group number {}: {}'.format(group_id, create_features.data.shape))
+        logging.info('{}: Finish loading the data, start create features'.
+                     format((time.asctime(time.localtime(time.time())))))
+        logging.info('data sizes: train data, group number {}: {}'.format(group_id, create_features.data.shape))
+        create_features.create_all_features()
+        create_features.save_features()
 
     print('{}: Finish creating train data features, start loading test data'.
           format((time.asctime(time.localtime(time.time())))))
@@ -1074,6 +1115,7 @@ def main():
                  format((time.asctime(time.localtime(time.time())))))
     logging.info('data sizes: test data: {}'.format(create_features.data.shape))
     create_features.create_all_features()
+    create_features.save_features()
 
     print('{}: Finish creating test data features, start loading val data'.
           format((time.asctime(time.localtime(time.time())))))
@@ -1085,6 +1127,7 @@ def main():
     logging.info('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
     logging.info('data sizes: val data: {}'.format(create_features.data.shape))
     create_features.create_all_features()
+    create_features.save_features()
 
     print('{}: Finish creating val data features'.format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Finish creating val data features'.format((time.asctime(time.localtime(time.time())))))
