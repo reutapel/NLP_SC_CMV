@@ -5,7 +5,7 @@ import math
 from datetime import datetime
 import logging
 import pytz
-from copy import copy
+import copy
 import os
 import nltk as nk
 import numpy as np
@@ -20,6 +20,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 import pickle
 from doc2vec import Doc2Vec
 import joblib
+import sys
+import ray
 # from gensim import corpora
 # from nltk.stem import PorterStemmer
 # from nltk.tokenize import sent_tokenize, word_tokenize
@@ -29,12 +31,12 @@ base_directory = os.getenv('PWD')
 print(base_directory)
 # base_directory = os.path.join(base_directory, 'to_server')
 data_directory = os.path.join(base_directory, 'data')
+trained_models_directory = os.path.join(base_directory, 'trained_models')
 save_data_directory = os.path.join(data_directory, 'filter_submissions')
+train_test_data_directory = os.path.join(data_directory, 'filter_submissions')
 features_directory = os.path.join(base_directory, 'features')
 log_directory = os.path.join(base_directory, 'logs')
-LOG_FILENAME = os.path.join(log_directory,
-                            datetime.now().strftime('LogFile_create_features_delta_%d_%m_%Y_%H_%M_%S.log'))
-logging.basicConfig(filename=LOG_FILENAME, level=logging.INFO, )
+
 
 # for topic modeling clean text
 stop = set(stopwords.words('english'))
@@ -43,15 +45,36 @@ lemma = WordNetLemmatizer()
 # for sentiment analysis
 sid = SentimentIntensityAnalyzer()
 
+max_branch_length_dict = {
+    'train': 108,
+    'testi': 102,
+    'valid': 106,
+}
+
+
+def save_as_pickled_object(obj, file_path):
+    """
+    This is a defensive way to write pickle.write, allowing for very large files on all platforms
+    """
+    max_bytes = 2**31 - 1
+    bytes_out = pickle.dumps(obj)
+    n_bytes = sys.getsizeof(bytes_out)
+    with open(file_path, 'wb') as f_out:
+        for idx in range(0, n_bytes, max_bytes):
+            f_out.write(bytes_out[idx:idx+max_bytes])
+
+    return
+
 
 class CreateFeatures:
     """
     This class will build the features for each unit: comment and its submission
     """
-    def __init__(self, number_of_topics):
+    def __init__(self, number_of_topics, max_branch_length=None):
         """
         Load data and pre process
         :param int number_of_topics: number_of_topics for topic model feature
+        :param int max_branch_length: if there is a specific max_branch_length
         """
 
         self.is_train = None
@@ -69,12 +92,12 @@ class CreateFeatures:
         # self.branch_numbers_df.columns = ['branch_id', 'branch_key', 'num_delta', 'submission_id',
         #                                   'num_comments_removed', 'pct_comments_removed', 'branch_length',
         #                                   'delta_index_in_branch', 'num_comments_after_delta']
-        self.all_branches = copy(self.branch_numbers_df)
+        self.all_branches = copy.deepcopy(self.branch_numbers_df)
 
         # Create submissions data:
         self.all_submissions_total = pd.read_csv(os.path.join(save_data_directory,
                                                               'all_submissions_final_after_remove.csv'))
-        self.all_submissions = copy(self.all_submissions_total)
+        self.all_submissions = copy.deepcopy(self.all_submissions_total)
 
         # Load all relevant data
 
@@ -120,7 +143,7 @@ class CreateFeatures:
         self.branch_submission_dict_features = ['branch_length', 'num_deltas_in_submission_before_branch',
                                                 'num_brother_branches_before_branch', 'mean_brothers_length']
 
-        self.max_branch_length = None
+        self.max_branch_length = max_branch_length
         # define class
         self.branch_ids = None
         self.branches_lengths_list = None
@@ -130,7 +153,7 @@ class CreateFeatures:
         self.tfidf_vec_fitted = None
         self.train_dictionary = None
         self.train_data_term_matrix = None
-        self.lad_model = None
+        self.lda_model = None
         self.doc2vec_model = None
         self.doc2vec_vector_size = 50
         self.submission_comments_dict = None
@@ -141,122 +164,198 @@ class CreateFeatures:
 
         return
 
-    def create_data(self, data_file_name, is_train):
+    def create_data(self, data_file_name, is_train, load_data=True, data=None, data_dir=train_test_data_directory,
+                    trained_models_dir=trained_models_directory):
         """
         This function create the data based on the data_file_name
         :param str data_file_name: the data to create (train, test, val)
         :param bool is_train: if this is the train data
+        :param data: the data itself, if already load it
+        :param data_dir: if we load from directory which is not the main one
+        :param bool load_data: if we want to load the data or no need to
         :return:
         """
         self.data_file_name = data_file_name
         self.is_train = is_train
-        # all the data, with label
-        self.data = pd.read_csv(os.path.join(save_data_directory, data_file_name + '_data.csv'), skipinitialspace=True,
-                                usecols=self.data_columns)
-        self.data_pre_process()
 
-        self.data['submission_created_utc'] = self.data['submission_created_utc'].astype(int)
-        self.data['comment_created_utc'] = self.data['comment_created_utc'].astype(int)
-        self.all_submissions['submission_created_utc'] = self.all_submissions['submission_created_utc'].astype(int)
-        self.data['time_between'] = self.data['comment_created_utc'] - self.data['submission_created_utc']
+        if load_data:
+            # all the data, with label
+            if data is None:
+                print(f'{time.asctime(time.localtime(time.time()))}: Loading data {data_file_name} from {data_dir}')
+                logging.info('Loading data {} from {}'.format(data_file_name, data_dir))
 
-        # get the max number of comments in a branch
-        self.max_branch_length = self.all_branches['branch_length'].max()
+                self.data = pd.read_csv(os.path.join(data_dir, data_file_name + '_data.csv'), skipinitialspace=True,
+                                        usecols=self.data_columns)
+                self.data['comment_created_utc'] = self.data['comment_created_utc'].astype(int)
+                self.data['time_between'] = self.data['comment_created_utc'] - self.data['submission_created_utc']
 
-        # get the branch ids sort by their length from the longest to the shortest
-        self.branch_ids = self.all_branches[['branch_id', 'branch_length']].drop_duplicates()
-        self.branch_ids = self.branch_ids.sort_values(by='branch_length', ascending=False)
-        self.branches_lengths_list = list(self.branch_ids['branch_length'])
-        self.num_branches = len(self.branches_lengths_list)
-        self.branch_ids = self.branch_ids.reset_index()
-        self.branch_ids = self.branch_ids['branch_id']
+                # Features calculated for all the data frame:
+                self.data['comment_len'] = self.data['comment_body'].str.len()
 
-        # fill features df with list of 0 according to the max branch length
-        number_of_branches = self.branch_ids.shape[0]
-        self.branch_comments_features_df = pd.concat([pd.Series(np.zeros(
-            shape=(number_of_branches, self.comment_features_columns_len)).tolist())] * self.max_branch_length, axis=1)
-        self.branch_comments_user_profiles_df = pd.concat([pd.Series(np.zeros(
-            shape=(number_of_branches, len(self.comments_user_features_columns))).tolist())] * self.max_branch_length,
-                                                          axis=1)
+                # get number of branches for each comment
+                comment_branch = self.data[['comment_id', 'branch_id']]
+                comment_branch_groupby = comment_branch.groupby(by='comment_id').count()
+                comment_branch_groupby['comment_id'] = comment_branch_groupby.index
+                comment_branch_groupby.columns = ['number_of_branches', 'comment_id']
 
-        # Features calculated for all the data frame:
-        self.data['comment_len'] = self.data['comment_body'].str.len()
+                self.data = self.data.merge(comment_branch_groupby, on='comment_id')
 
-        # get number of branches for each comment
-        comment_branch = self.data[['comment_id', 'branch_id']]
-        comment_branch_groupby = comment_branch.groupby(by='comment_id').count()
-        comment_branch_groupby['comment_id'] = comment_branch_groupby.index
-        comment_branch_groupby.columns = ['number_of_branches', 'comment_id']
+            else:
+                self.data = data
 
-        self.data = self.data.merge(comment_branch_groupby, on='comment_id')
+            self.data_pre_process()
 
-        # define branch_comments_raw_text_df with number of columns as the max_branch_length
-        self.branch_comments_embedded_text_df = pd.DataFrame(columns=np.arange(self.max_branch_length))
+            # self.data['submission_created_utc'] = self.data['submission_created_utc'].astype(int)
+            self.all_submissions['submission_created_utc'] = self.all_submissions['submission_created_utc'].astype(int)
 
-        # Create vocabulary of the text of the data
-        # data after drop duplications:
-        self.submission_no_dup = self.all_submissions[['submission_author', 'submission_id', 'submission_created_utc']]
-        self.vocab_df = self.create_vocab()
+            # get the max number of comments in a branch
+            if self.max_branch_length is None:  # if we didn't define this length before
+                self.max_branch_length = self.all_branches['branch_length'].max()
+
+            # get the branch ids sort by their length from the longest to the shortest
+            self.branch_ids = self.all_branches[['branch_id', 'branch_length']].drop_duplicates()
+            self.branch_ids = self.branch_ids.sort_values(by='branch_length', ascending=False)
+            self.branches_lengths_list = list(self.branch_ids['branch_length'])
+            self.num_branches = len(self.branches_lengths_list)
+            self.branch_ids = self.branch_ids.reset_index()
+            self.branch_ids = self.branch_ids['branch_id']
+
+            # fill features df with list of 0 according to the max branch length
+            self.branch_comments_features_df = dict()
+            self.branch_comments_user_profiles_df = dict()
+
+            # define branch_comments_raw_text_df with number of columns as the max_branch_length
+            # self.branch_comments_embedded_text_df = pd.DataFrame(columns=np.arange(self.max_branch_length))
+            self.branch_comments_embedded_text_df = dict()
+
+            # Create vocabulary of the text of the data
+            # data after drop duplications:
+            self.submission_no_dup = self.all_submissions[['submission_author', 'submission_id', 'submission_created_utc']]
+
+            print("{}: Start create vocab".format(time.asctime(time.localtime(time.time()))))
+            logging.info('Start create vocab')
+            self.vocab_df = self.create_vocab()
+            print("{}: Finish create vocab".format(time.asctime(time.localtime(time.time()))))
+            logging.info('Finish create vocab')
+
+            # create dict with the data for each submission:
+            submission_comments_dict_file_path = os.path.join(data_dir, 'trained_models',
+                                                              'submission_comments_dict_' + self.data_file_name + '.pkl')
+            if not os.path.isfile(submission_comments_dict_file_path):
+                print('{}: Start create submission dict for {}'.format((time.asctime(time.localtime(time.time()))),
+                                                                       self.data_file_name))
+                logging.info('Start create submission dict for {}'.format(self.data_file_name))
+                start_time = time.time()
+                self.submission_comments_dict = dict()
+                submission_ids = self.submission_no_dup['submission_id']
+                for index, submission_id in submission_ids.iteritems():
+                    self.submission_comments_dict[submission_id] =\
+                        self.data.loc[self.data['submission_id'] == submission_id].drop_duplicates(subset='comment_id')
+
+                joblib.dump(self.submission_comments_dict, submission_comments_dict_file_path)
+                print('time to create submission dict: ', time.time() - start_time)
+                logging.info('time to create submission dict: {}'.format(time.time() - start_time))
+            else:
+                self.submission_comments_dict = joblib.load(submission_comments_dict_file_path)
+
+            # create dict with the data for each branch:
+            print('{}: Start create branch dict for {}'.format((time.asctime(time.localtime(time.time()))),
+                                                               self.data_file_name))
+            logging.info('Start create branch dict for {}'.format(self.data_file_name))
+            self.all_branches = self.all_branches.assign(branch_first_comment=0)
+            self.all_branches = self.all_branches.assign(branch_last_comment=0)
+            start_time = time.time()
+            self.branch_comments_dict = dict()
+            for index, branch_id in self.branch_ids.iteritems():
+                branch_data = self.data.loc[self.data['branch_id'] == branch_id].drop_duplicates(subset='comment_id')
+                branch_data = branch_data.sort_values(by='comment_real_depth', ascending=True).reset_index()
+                self.branch_comments_dict[branch_id] = branch_data
+                # add first and last comment in branch
+                self.all_branches.loc[self.all_branches.branch_id == branch_id, 'branch_first_comment'] =\
+                    branch_data['comment_created_utc'].min()
+                self.all_branches.loc[self.all_branches.branch_id == branch_id, 'branch_last_comment'] =\
+                    branch_data['comment_created_utc'].max()
+            print('time to create branch dict: ', time.time() - start_time)
+            logging.info('time to create branch dict: {}'.format(time.time() - start_time))
+
         # create vocabulary for idf calq only if train data, else- use what we trained with the train data
         if self.is_train:
-            print("{}: begin fitting tfidf".format(time.asctime(time.localtime(time.time()))))
-            logging.info("{}: begin fitting tfidf".format(time.asctime(time.localtime(time.time()))))
-            self.tfidf_vec_fitted = TfidfVectorizer(stop_words='english', lowercase=True, analyzer='word', norm='l2',
-                                                    smooth_idf=True, sublinear_tf=False, use_idf=True)
-            self.tfidf_vec_fitted.fit(self.vocab_df)
-            print("{}: finish fitting tfidf".format(time.asctime(time.localtime(time.time()))))
-            logging.info("{}: finish fitting tfidf".format(time.asctime(time.localtime(time.time()))))
+            tfidf_vec_fitted_file_path = os.path.join(trained_models_dir, 'tfidf_vec_fitted.pkl')
+            if not os.path.isfile(tfidf_vec_fitted_file_path):
+                print('{}: begin fitting tfidf'.format(time.asctime(time.localtime(time.time()))))
+                logging.info('begin fitting tfidf')
+                self.tfidf_vec_fitted = TfidfVectorizer(stop_words='english', lowercase=True, analyzer='word',
+                                                        norm='l2',
+                                                        smooth_idf=True, sublinear_tf=False, use_idf=True)
+                self.tfidf_vec_fitted.fit(self.vocab_df)
+                joblib.dump(self.tfidf_vec_fitted, tfidf_vec_fitted_file_path)
+                print('{}: finish fitting tfidf'.format(time.asctime(time.localtime(time.time()))))
+                logging.info('finish fitting tfidf')
+
+            else:  # load the trained model
+                print('{}: Loading fitted tfidf'.format(time.asctime(time.localtime(time.time()))))
+                logging.info('Loading fitted tfidf')
+                self.tfidf_vec_fitted = joblib.load(tfidf_vec_fitted_file_path)
 
             # create LDA topic model
-            self.train_dictionary, self.train_data_term_matrix = self.create_data_dictionary()
+            train_dictionary_file_path = os.path.join(trained_models_dir, 'train_dictionary.pkl')
+            train_data_term_matrix_file_path = os.path.join(trained_models_dir, 'train_data_term_matrix.pkl')
+
+            if not os.path.isfile(train_dictionary_file_path):
+                self.train_dictionary, self.train_data_term_matrix = self.create_data_dictionary()
+                joblib.dump(self.train_dictionary, train_dictionary_file_path)
+                joblib.dump(self.train_data_term_matrix, train_data_term_matrix_file_path)
+            else:
+                print('{}: Loading train_dictionary and train_data_term_matrix'.
+                      format(time.asctime(time.localtime(time.time()))))
+                logging.info('Loading train_dictionary and train_data_term_matrix')
+                self.train_dictionary = joblib.load(train_dictionary_file_path)
+                self.train_data_term_matrix = joblib.load(train_data_term_matrix_file_path)
+
             # Create LDA model
-            print('{}: Create LDA model'.format((time.asctime(time.localtime(time.time())))))
-            logging.info('{}: Create LDA model'.format((time.asctime(time.localtime(time.time())))))
+            lda_fitted_model_file_path = os.path.join(trained_models_dir, 'lda_model.pkl')
+            if not os.path.isfile(lda_fitted_model_file_path):
+                print('{}: Create LDA model'.format((time.asctime(time.localtime(time.time())))))
+                logging.info('Create LDA model')
 
-            self.lad_model = ldamodel.LdaTransformer(num_topics=self.number_of_topics, id2word=self.train_dictionary,
-                                                     passes=50, minimum_probability=0)
-            # Train LDA model on the comments term matrix
-            print('{}: Fit LDA model on {}'.format((time.asctime(time.localtime(time.time()))), self.data_file_name))
-            logging.info('{}: Fit LDA model on {}'.format((time.asctime(time.localtime(time.time()))),
-                                                          self.data_file_name))
+                self.lda_model = ldamodel.LdaTransformer(num_topics=self.number_of_topics,
+                                                         id2word=self.train_dictionary,
+                                                         passes=50, minimum_probability=0)
+                # Train LDA model on the comments term matrix
+                print(
+                    '{}: Fit LDA model on {}'.format((time.asctime(time.localtime(time.time()))), self.data_file_name))
+                logging.info('Fit LDA model on {}'.format(self.data_file_name))
 
-            self.lad_model = self.lad_model.fit(list(self.train_data_term_matrix.values()))
+                self.lda_model = self.lda_model.fit(list(self.train_data_term_matrix.values()))
+                joblib.dump(self.lda_model, lda_fitted_model_file_path)
+                print('{}: finish fitting LDA model'.format(time.asctime(time.localtime(time.time()))))
+                logging.info('finish fitting LDA model')
+
+            else:
+                print('{}: Loading fitted LDA model'.format(time.asctime(time.localtime(time.time()))))
+                logging.info('Loading fitted LDA model')
+                self.lda_model = joblib.load(lda_fitted_model_file_path)
 
             # create and train doc2vec model
-            print('{}: Create and train Doc2Vec model on {}'.format((time.asctime(time.localtime(time.time()))),
-                                                                    self.data_file_name))
-            logging.info('{}: Create and train Doc2Vec model on {}'.format((time.asctime(time.localtime(time.time()))),
-                                                                           self.data_file_name))
-            submission_body = self.all_submissions['submission_body']
-            comments_body = self.data['comment_body']
-            train_data_doc2vec = submission_body.append(comments_body, ignore_index=True)
-            train_data_doc2vec = pd.Series(train_data_doc2vec.unique())
-            self.doc2vec_model = Doc2Vec(fname='', linux=False, use_file=False, data=train_data_doc2vec,
-                                         vector_size=self.doc2vec_vector_size)
+            doc2vec_fitted_model_file_path = os.path.join(trained_models_dir, 'doc2vec_model.pkl')
+            if not os.path.isfile(doc2vec_fitted_model_file_path):
+                print('{}: Create and train Doc2Vec model on {}'.format((time.asctime(time.localtime(time.time()))),
+                                                                        self.data_file_name))
+                logging.info('Create and train Doc2Vec model on {}'.format(self.data_file_name))
+                submission_body = self.all_submissions['submission_body']
+                comments_body = self.data['comment_body']
+                train_data_doc2vec = submission_body.append(comments_body, ignore_index=True)
+                train_data_doc2vec = pd.Series(train_data_doc2vec.unique())
+                self.doc2vec_model = Doc2Vec(fname='', linux=False, use_file=False, data=train_data_doc2vec,
+                                             vector_size=self.doc2vec_vector_size)
+                joblib.dump(self.doc2vec_model, doc2vec_fitted_model_file_path)
+                print('{}: finish fitting doc2vec model'.format(time.asctime(time.localtime(time.time()))))
+                logging.info('finish fitting doc2vec model')
 
-        # create dict with the data for each submission:
-        start_time = time.time()
-        self.submission_comments_dict = dict()
-        submission_ids = self.submission_no_dup['submission_id']
-        for index, submission_id in submission_ids.iteritems():
-            self.submission_comments_dict[submission_id] =\
-                self.data.loc[self.data['submission_id'] == submission_id].drop_duplicates(subset='comment_id')
-        print('time to create submission dict: ', time.time() - start_time)
-
-        # create dict with the data for each branch:
-        self.all_branches = self.all_branches.assign(branch_first_comment=0)
-        self.all_branches = self.all_branches.assign(branch_last_comment=0)
-        start_time = time.time()
-        self.branch_comments_dict = dict()
-        for index, branch_id in self.branch_ids.iteritems():
-            branch_data = self.data.loc[self.data['branch_id'] == branch_id].drop_duplicates(subset='comment_id')
-            self.branch_comments_dict[branch_id] = branch_data
-            # add first and last comment in branch
-            self.all_branches.loc[self.all_branches.branch_id == branch_id, 'branch_first_comment'] =\
-                branch_data['comment_created_utc'].min()
-            self.all_branches.loc[self.all_branches.branch_id == branch_id, 'branch_last_comment'] =\
-                branch_data['comment_created_utc'].max()
-        print('time to create branch dict: ', time.time() - start_time)
+            else:
+                print('{}: Loading fitted doc2vec model'.format(time.asctime(time.localtime(time.time()))))
+                logging.info('Loading fitted doc2vec model')
+                self.doc2vec_model = joblib.load(doc2vec_fitted_model_file_path)
 
         return
 
@@ -266,32 +365,31 @@ class CreateFeatures:
         :return:
         """
         print(time.asctime(time.localtime(time.time())), ': Start branch features creation')
-        logging.info('{}: Start branch features creation'.format(time.asctime(time.localtime(time.time()))))
+        logging.info('Start branch features creation')
 
         for index, branch_id in self.branch_ids.iteritems():
-            if index % 100 == 0:
+            if index % 1000 == 0:
                 print(time.asctime(time.localtime(time.time())), ': Start branch id', branch_id,
                       'with branch index', index)
-                logging.info('{}: Start branch id {} with branch index {}'.
-                             format(time.asctime(time.localtime(time.time())), branch_id, index))
+                logging.info('Start branch id {} with branch index {}'.format(branch_id, index))
             branch = self.all_branches.loc[self.all_branches.branch_id == branch_id]
             submission_id = branch.submission_id.values[0]
-            branch_features = pd.DataFrame(columns=self.branch_submission_dict_features)
-            branch_features.loc[0, 'branch_length'] = branch.branch_length.values[0]
+            branch_features = pd.Series(index=self.branch_submission_dict_features)
+            branch_features.loc['branch_length'] = branch.branch_length.values[0]
             branch_first_comment = branch.branch_first_comment.values[0]
             branch_last_comment = branch.branch_last_comment.values[0]
             # all branches that their first comment was written before the last comment of the branch
             brothers_branches = self.all_branches.loc[(self.all_branches.branch_first_comment < branch_last_comment) &
                                                       (self.all_branches.submission_id == submission_id)]
-            branch_features.loc[0, 'num_brother_branches_before_branch'] = brothers_branches.shape[0]
-            branch_features.loc[0, 'mean_brothers_length'] = brothers_branches.branch_length.mean()
+            branch_features.loc['num_brother_branches_before_branch'] = brothers_branches.shape[0]
+            branch_features.loc['mean_brothers_length'] = brothers_branches.branch_length.mean()
             # all deltas before the first comment of the branch
             submission_data = self.submission_comments_dict[submission_id]
             deltas_before_branch = submission_data.loc[(submission_data.comment_created_utc < branch_first_comment) &
                                                        (submission_data.delta == 1)]
-            branch_features.loc[0, 'num_deltas_in_submission_before_branch'] = deltas_before_branch.shape[0]
+            branch_features.loc['num_deltas_in_submission_before_branch'] = deltas_before_branch.shape[0]
 
-            self.branch_submission_dict[index] = [submission_id, np.array(branch_features)[0]]
+            self.branch_submission_dict[branch_id] = [submission_id, np.array(branch_features)]
 
         return
 
@@ -301,22 +399,21 @@ class CreateFeatures:
         :return:
         """
         print(time.asctime(time.localtime(time.time())), ': Start branch deltas features creation')
-        logging.info('{}: Start branch deltas features creation'.format(time.asctime(time.localtime(time.time()))))
+        logging.info('Start branch deltas features creation')
 
         for index, branch_id in self.branch_ids.iteritems():
-            if index % 100 == 0:
+            if index % 1000 == 0:
                 print(time.asctime(time.localtime(time.time())), ': Start branch id', branch_id,
                       'with branch index', index)
-                logging.info('{}: Start branch id {} with branch index {}'
-                             .format(time.asctime(time.localtime(time.time())), branch_id, index))
+                logging.info('Start branch id {} with branch index {}'.format(branch_id, index))
             branch = self.all_branches.loc[self.all_branches.branch_id == branch_id]
             is_delta_in_branch = int(bool(branch.num_delta.values))  # 1 if there is deltas and 0 otherwise
             number_of_deltas_in_branch = branch.num_delta.values[0]
             deltas_comments_location_in_branch = list(self.data.loc[(self.data.branch_id == branch.branch_id.values[0]) &
                                                                     (self.data.delta == 1)]['comment_real_depth'])
 
-            self.branch_deltas_data_dict[index] = [is_delta_in_branch, number_of_deltas_in_branch,
-                                                   deltas_comments_location_in_branch]
+            self.branch_deltas_data_dict[branch_id] = [is_delta_in_branch, number_of_deltas_in_branch,
+                                                       deltas_comments_location_in_branch]
 
         return
 
@@ -326,7 +423,7 @@ class CreateFeatures:
         :return:
         """
         print(time.asctime(time.localtime(time.time())), ': Start submissions features creation')
-        logging.info('{}: Start submissions features creation'.format(time.asctime(time.localtime(time.time()))))
+        logging.info('Start submissions features creation')
 
         # Features calculated for all the data frame:
         self.all_submissions['submission_len'] = self.all_submissions['submission_body'].str.len()
@@ -336,8 +433,8 @@ class CreateFeatures:
             if sub_index % 100 == 0:
                 print(time.asctime(time.localtime(time.time())), ': Start submission id', submission.submission_id,
                       'with submission index', sub_index)
-                logging.info('{}: Start submission id {} with submission index {}'.
-                             format(time.asctime(time.localtime(time.time())), submission.submission_id, sub_index))
+                logging.info('Start submission id {} with submission index {}'.
+                             format(submission.submission_id, sub_index))
             submission_features = pd.DataFrame(columns=self.submission_features_columns)
             submitter_features = pd.DataFrame(columns=self.submitter_features_columns)
 
@@ -394,14 +491,19 @@ class CreateFeatures:
         the comments body
         :return:
         """
+
         print(time.asctime(time.localtime(time.time())), ': Start comments text creation')
-        logging.info('{}: Start comments text creation'.format(time.asctime(time.localtime(time.time()))))
+        logging.info('Start comments text creation')
 
         for index, branch_id in self.branch_ids.iteritems():
+            if index % 1000 == 0:
+                print(time.asctime(time.localtime(time.time())), ': Start branch_id', branch_id,
+                      'with branch index', index)
+                logging.info('Start branch_id {} with branch index {}'.format(branch_id, index))
             branch_comments_body = self.branch_comments_dict[branch_id][['comment_body']]
             branch_comments_body = branch_comments_body.assign(embedded_comment_text='')
             for inner_index, comment in branch_comments_body.iterrows():
-                branch_comments_body.loc[inner_index, 'embedded_comment_text'] =\
+                branch_comments_body.loc[inner_index, 'embedded_comment_text'] = \
                     self.doc2vec_model.infer_doc_vector(comment['comment_body'])
             branch_comments_body = branch_comments_body['embedded_comment_text']
             if branch_comments_body.shape[0] < self.max_branch_length:
@@ -410,9 +512,16 @@ class CreateFeatures:
                 branch_comments_body = pd.concat([branch_comments_body, append_zero], ignore_index=True)
             else:
                 branch_comments_body = branch_comments_body.reset_index()['embedded_comment_text']
-            branch_comments_body.name = index
+            # branch_comments_body.name = index
 
-            self.branch_comments_embedded_text_df = self.branch_comments_embedded_text_df.append(branch_comments_body)
+            self.branch_comments_embedded_text_df[branch_id] = branch_comments_body
+
+            # self.branch_comments_embedded_text_df = self.branch_comments_embedded_text_df.append(branch_comments_body)
+
+        self.branch_comments_embedded_text_df = pd.DataFrame.from_dict(self.branch_comments_embedded_text_df,
+                                                                       orient='index')
+        print(time.asctime(time.localtime(time.time())), ': Finish comments text creation')
+        logging.info('Finish comments text creation')
 
         return
 
@@ -424,8 +533,7 @@ class CreateFeatures:
         """
 
         print(time.asctime(time.localtime(time.time())), ': Start comments and commenters features creation')
-        logging.info('{}: Start comments and commenters features creation'.
-                     format(time.asctime(time.localtime(time.time()))))
+        logging.info('Start comments and commenters features creation')
 
         # Get topic model result
         topic_model_result = self.topic_model()
@@ -437,163 +545,205 @@ class CreateFeatures:
         # comment_submission_groupby.columns = ['submission_num_comments', 'submission_id']
         #
         # self.data = self.data.merge(comment_submission_groupby, on='submission_id')
+
+        # get each comment once
+        comments = self.data.drop_duplicates(subset='comment_id').reset_index(drop=True)
+        print(time.asctime(time.localtime(time.time())), ': Number of comments to infer', comments.shape[0])
+        logging.info('Number of comments to infer {}'.format(comments.shape[0]))
+
+        all_comments_features = dict()
+        all_comments_user_features = dict()
+        # create features for each comment - not matter the branch
+        for comment_index, comment in comments.iterrows():
+            if comment_index % 1000 == 0:
+                print(time.asctime(time.localtime(time.time())), ': Start comment_id', comment['comment_id'],
+                      'with comment index', comment_index)
+                logging.info('Start comment_id {} with comment index {}'.format(comment['comment_id'], comment_index))
+            comment_features = pd.Series(index=self.comment_features_columns)
+            comment_user_features = pd.Series(index=self.comments_user_features_columns)
+
+            # get comment info
+            comment_author = copy.deepcopy(comment['comment_author'])
+            comment_time = copy.deepcopy(comment['comment_created_utc'])
+            submission_time = copy.deepcopy(comment['submission_created_utc'])
+            submission_id = copy.deepcopy(comment['submission_id'])
+            comment_body = copy.deepcopy(comment['comment_body'])
+            submission_body = copy.deepcopy(comment['submission_body'])
+            submission_author = comment['submission_author']
+
+            # add topic model features and comment_len and comment_real_depth
+
+            topic_model_comment = pd.Series(topic_model_result.loc[
+                                                topic_model_result.comment_id == comment['comment_id'],
+                                                topic_model_result.columns != 'comment_id'].values[0])
+            comment_features = comment_features.append(topic_model_comment)
+            comment_features.loc['comment_len'] = comment['comment_len']
+            comment_features.loc['comment_real_depth'] = comment['comment_real_depth']
+            comment_features.loc['number_of_branches'] = comment['number_of_branches']
+
+            # treatment:
+            comment_features.loc['is_quote'] = self.loop_over_comment_for_quote(comment, comment_body)
+            # Get the time between the submission and the comment time and the ration between the first comment:
+            time_to_comment = comment['time_between']
+            time_between_messages_hour = math.floor(time_to_comment / 3600.0)
+            time_between_messages_min = math.floor(
+                (time_to_comment - 3600 * time_between_messages_hour) / 60.0) / 100.0
+            comment_features.loc['time_between_sub_com'] = time_between_messages_hour + time_between_messages_min
+            time_until_first_comment, time_between_comment_first_comment = \
+                self.time_to_first_comment(submission_id, submission_time, comment_time)
+            if time_to_comment > 0:
+                comment_features.loc['time_ratio_first_comment'] = time_until_first_comment / time_to_comment
+            else:
+                comment_features.loc['time_ratio_first_comment'] = 0
+
+            comment_features.loc['time_between_comment_first_comment'] = time_between_comment_first_comment
+
+            # Sentiment analysis:
+            # for the comment:
+            comment_sentiment_list = sentiment_analysis(comment_body)
+            comment_features.loc['nltk_com_sen_pos'], comment_features.loc['nltk_com_sen_neg'], \
+            comment_features.loc['nltk_com_sen_neutral'] = \
+                comment_sentiment_list[0], comment_sentiment_list[1], comment_sentiment_list[2]
+            # for the submission:
+            sub_sentiment_list = sentiment_analysis(submission_body)
+            # cosine similarity between submission's sentiment vector and comment sentiment vector:
+            sentiment_sub = np.array(sub_sentiment_list).reshape(1, -1)
+            sentiment_com = np.array(comment_sentiment_list).reshape(1, -1)
+            comment_features.loc['nltk_sim_sen'] = cosine_similarity(sentiment_sub, sentiment_com)[0][0]
+
+            # percent of adjective in the comment:
+            comment_features.loc['percent_adj'] = percent_of_adj(comment_body)
+
+            # Get comment author features:
+            comment_user_features.loc['commenter_number_submission'] = \
+                self.number_of_message(comment_author, comment_time, 'submission')
+            comment_user_features.loc['commenter_number_comment'] = \
+                self.number_of_message(comment_author, comment_time, 'comment')
+            comment_user_features.loc['commenter_seniority_days'] = self.calculate_user_seniority(comment_author)
+            comment_user_features.loc['is_first_comment_in_tree'], \
+            comment_user_features.loc['number_of_comments_in_submission_by_comment_user'], _, _, \
+            submission_num_comments = \
+                self.comment_in_tree(comment_author, comment_time, submission_id)
+            comment_features.loc['submission_num_comments'] = submission_num_comments
+
+            # Get the numbers of comments by the submitter
+            _, _, number_of_respond_by_submitter, number_of_respond_by_submitter_total, _ = \
+                self.comment_in_tree(submission_author, comment_time, submission_id, comment_author, True)
+            comment_user_features.loc['number_of_respond_by_submitter_to_commenter'] = \
+                number_of_respond_by_submitter
+            # Ratio of comments number:
+            if submission_num_comments == 0:
+                comment_user_features.loc['respond_to_comment_user_all_ratio'] = 0
+            else:
+                comment_user_features.loc['respond_to_comment_user_all_ratio'] = \
+                    number_of_respond_by_submitter / submission_num_comments
+            if number_of_respond_by_submitter_total == 0:
+                comment_user_features.loc['respond_to_comment_user_responses_ratio'] = 0
+            else:
+                comment_user_features.loc['respond_to_comment_user_responses_ratio'] = \
+                    number_of_respond_by_submitter / number_of_respond_by_submitter_total
+
+            # sim feature:
+            comment_user_features.loc['submmiter_commenter_tfidf_cos_sim'] = \
+                self.calc_tf_idf_cos(comment_time, comment_author, submission_author)
+
+            # append comments features to all comments features
+            all_comments_features[comment['comment_id']] = comment_features
+            all_comments_user_features[comment['comment_id']] = comment_user_features
+
+        # insert comment and comment user features to features DF
+        print(time.asctime(time.localtime(time.time())),
+              ': Start insert comment and comment user features to features DF')
+        logging.info('insert comment and comment user features to features DF')
         for branch_index, branch_id in self.branch_ids.iteritems():
-            if branch_index % 100 == 0:
+            branch_comments_features = pd.Series(np.zeros(
+                shape=(1, self.comment_features_columns_len)).tolist() * self.max_branch_length)
+            branch_comments_user_features = pd.Series(np.zeros(
+                shape=(1, len(self.comments_user_features_columns))).tolist() * self.max_branch_length)
+            if branch_index % 1000 == 0:
                 print(time.asctime(time.localtime(time.time())), ': Start branch_id', branch_id,
                       'with branch index', branch_index)
-                logging.info('{}: Start branch_id {} with branch index {}'.
-                             format(time.asctime(time.localtime(time.time())), branch_id, branch_index))
+                logging.info('Start branch_id {} with branch index {}'.format(branch_id, branch_index))
             branch_comments = self.branch_comments_dict[branch_id]
-            branch_comments = branch_comments.sort_values(by='comment_real_depth', ascending=True).reset_index()
+            branch_comments = \
+                branch_comments.sort_values(by='comment_real_depth', ascending=True).reset_index(drop=True)
+
             for comment_index, comment in branch_comments.iterrows():
-                comment_features = pd.DataFrame(columns=self.comment_features_columns)
-                comment_user_features = pd.DataFrame(columns=self.comments_user_features_columns)
+                comment_features = all_comments_features[comment['comment_id']]
+                comment_user_features = all_comments_user_features[comment['comment_id']]
 
-                # get comment info
-                comment_author = copy(comment['comment_author'])
-                comment_time = copy(comment['comment_created_utc'])
-                submission_time = copy(comment['submission_created_utc'])
-                submission_id = copy(comment['submission_id'])
-                comment_body = copy(comment['comment_body'])
-                submission_body = copy(comment['submission_body'])
-                submission_author = comment['submission_author']
+                branch_comments_features.loc[comment_index] = np.array(comment_features).astype(float)
+                branch_comments_user_features.loc[comment_index] = np.array(comment_user_features).astype(float)
 
-                # add topic model features and comment_len and comment_real_depth
-                comment_features.loc[0, 'comment_id'] = comment['comment_id']
-                comment_features = comment_features.merge(topic_model_result, on='comment_id', how='left')
-                comment_features.loc[0, 'comment_len'] = comment['comment_len']
-                comment_features.loc[0, 'comment_real_depth'] = comment['comment_real_depth']
-                comment_features.loc[0, 'number_of_branches'] = comment['number_of_branches']
+            self.branch_comments_features_df[branch_id] = branch_comments_features
+            self.branch_comments_user_profiles_df[branch_id] = branch_comments_user_features
 
-                # treatment:
-                comment_features.loc[0, 'is_quote'] = self.loop_over_comment_for_quote(comment, comment_body)
-                # Get the time between the submission and the comment time and the ration between the first comment:
-                time_to_comment = comment['time_between']
-                time_between_messages_hour = math.floor(time_to_comment / 3600.0)
-                time_between_messages_min = math.floor(
-                    (time_to_comment - 3600 * time_between_messages_hour) / 60.0) / 100.0
-                comment_features.loc[0, 'time_between_sub_com'] = time_between_messages_hour + time_between_messages_min
-                time_until_first_comment, time_between_comment_first_comment = \
-                    self.time_to_first_comment(submission_id, submission_time, comment_time)
-                if time_to_comment > 0:
-                    comment_features.loc[0, 'time_ratio_first_comment'] = time_until_first_comment / time_to_comment
-                else:
-                    comment_features.loc[0, 'time_ratio_first_comment'] = 0
-
-                comment_features.loc[0, 'time_between_comment_first_comment'] = time_between_comment_first_comment
-
-                # Sentiment analysis:
-                # for the comment:
-                comment_sentiment_list = sentiment_analysis(comment_body)
-                comment_features.loc[0, 'nltk_com_sen_pos'], comment_features.loc[0, 'nltk_com_sen_neg'], \
-                    comment_features.loc[0, 'nltk_com_sen_neutral'] =\
-                    comment_sentiment_list[0], comment_sentiment_list[1], comment_sentiment_list[2]
-                # for the submission:
-                sub_sentiment_list = sentiment_analysis(submission_body)
-                # cosine similarity between submission's sentiment vector and comment sentiment vector:
-                sentiment_sub = np.array(sub_sentiment_list).reshape(1, -1)
-                sentiment_com = np.array(comment_sentiment_list).reshape(1, -1)
-                comment_features.loc[0, 'nltk_sim_sen'] = cosine_similarity(sentiment_sub, sentiment_com)[0][0]
-
-                # percent of adjective in the comment:
-                comment_features.loc[0, 'percent_adj'] = percent_of_adj(comment_body)
-
-                # Get comment author features:
-                comment_user_features.loc[0, 'commenter_number_submission'] =\
-                    self.number_of_message(comment_author, comment_time, 'submission')
-                comment_user_features.loc[0, 'commenter_number_comment'] = \
-                    self.number_of_message(comment_author, comment_time, 'comment')
-                comment_user_features.loc[0, 'commenter_seniority_days'] = self.calculate_user_seniority(comment_author)
-                comment_user_features.loc[0, 'is_first_comment_in_tree'], \
-                    comment_user_features.loc[0, 'number_of_comments_in_submission_by_comment_user'], _, _,\
-                    submission_num_comments = \
-                    self.comment_in_tree(comment_author, comment_time, submission_id)
-                comment_features.loc[0, 'submission_num_comments'] = submission_num_comments
-
-                # Get the numbers of comments by the submitter
-                _, _, number_of_respond_by_submitter, number_of_respond_by_submitter_total, _ =\
-                    self.comment_in_tree(submission_author, comment_time, submission_id, comment_author, True)
-                comment_user_features.loc[0, 'number_of_respond_by_submitter_to_commenter'] =\
-                    number_of_respond_by_submitter
-                # Ratio of comments number:
-                if submission_num_comments == 0:
-                    comment_user_features.loc[0, 'respond_to_comment_user_all_ratio'] = 0
-                else:
-                    comment_user_features.loc[0, 'respond_to_comment_user_all_ratio'] = \
-                        number_of_respond_by_submitter / submission_num_comments
-                if number_of_respond_by_submitter_total == 0:
-                    comment_user_features.loc[0, 'respond_to_comment_user_responses_ratio'] = 0
-                else:
-                    comment_user_features.loc[0, 'respond_to_comment_user_responses_ratio'] = \
-                        number_of_respond_by_submitter / number_of_respond_by_submitter_total
-
-                # sim feature:
-                comment_user_features.loc[0, 'submmiter_commenter_tfidf_cos_sim'] =\
-                    self.calc_tf_idf_cos(comment_time, comment_author, submission_author)
-
-                # insert comment and comment user features to features DF
-                self.branch_comments_features_df.loc[branch_index, comment_index] =\
-                    np.array(comment_features.loc[:, comment_features.columns != 'comment_id'])[0].astype(float)
-                self.branch_comments_user_profiles_df.loc[branch_index, comment_index] =\
-                    np.array(comment_user_features)[0].astype(float)
+            # self.branch_comments_features_df.loc[branch_index, comment_index] =\
+            #     np.array(comment_features.loc[:, comment_features.columns != 'comment_id'])[0].astype(float)
+            # self.branch_comments_user_profiles_df.loc[branch_index, comment_index] =\
+            #     np.array(comment_user_features.loc[:, comment_user_features.columns != 'comment_id'])[0].\
+            #         astype(float)
 
         # self.branch_comments_features_df = self.branch_comments_features_df.fillna(
         #     np.zeros(shape=len(self.comment_features_columns)))
         # self.branch_comments_user_profiles_df = self.branch_comments_user_profiles_df.fillna(
         #     np.zeros(shape=len(self.comments_user_features_columns)))
 
+        self.branch_comments_features_df = pd.DataFrame.from_dict(self.branch_comments_features_df, orient='index')
+        self.branch_comments_user_profiles_df = \
+            pd.DataFrame.from_dict(self.branch_comments_user_profiles_df, orient='index')
+
         return
 
-    def create_all_features(self):
+    def create_all_features(self, features_dir_path=features_directory):
         """
         This function first create features that are calculated for all the data frame and then features for each unit
+        before each function, check if the file is already exists, if no, call the function and save the file
+        :param features_dir_path: in which directory to save the features
         :return:
         """
 
         # create branch comments text data frame
-        self.create_branch_comments_text()
+        file_path = os.path.join(features_dir_path, 'branch_comments_embedded_text_df_' + self.data_file_name + '.pkl')
+        if not os.path.isfile(file_path):
+            self.create_branch_comments_text()
+            # save_as_pickled_object(self.branch_comments_embedded_text_df, file_path + '.pkl')
+            joblib.dump(self.branch_comments_embedded_text_df, file_path)
 
         # create branch_comments_features_df and branch_comments_user_profiles_df
-        self.create_branch_comments_features_df()
+        file_path1 = os.path.join(features_dir_path, 'branch_comments_features_df_' + self.data_file_name + '.pkl')
+        file_path2 = os.path.join(features_dir_path, 'branch_comments_user_profiles_df_' +
+                                  self.data_file_name + '.pkl')
+        if not os.path.isfile(file_path1) and not os.path.isfile(file_path2):
+            self.create_branch_comments_features_df()
+            # joblib.dump(self.branch_comments_features_df, file_path1 + '.compressed', compress=True)
+            # joblib.dump(self.branch_comments_user_profiles_df, file_path2 + '.compressed', compress=True)
+            joblib.dump(self.branch_comments_features_df, file_path1)
+            joblib.dump(self.branch_comments_user_profiles_df, file_path2)
 
         # create submission data dict
-        self.create_submission_submitter_features()
+        file_path = os.path.join(features_dir_path, 'submission_data_dict_' + self.data_file_name + '.pickle')
+        if not os.path.isfile(file_path):
+            self.create_submission_submitter_features()
+            with open(file_path, 'wb') as handle:
+                pickle.dump(self.submission_data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         # create branch_deltas_data_dict
-        self.create_branch_deltas_data_dict()
+        file_path = os.path.join(features_dir_path, 'branch_deltas_data_dict_' + self.data_file_name + '.pickle')
+        if not os.path.isfile(file_path):
+            self.create_branch_deltas_data_dict()
+            with open(file_path, 'wb') as handle:
+                pickle.dump(self.branch_deltas_data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         # create branch features
-        self.create_branch_submission_dict()
+        file_path = os.path.join(features_dir_path, 'branch_submission_dict_' + self.data_file_name + '.pickle')
+        if not os.path.isfile(file_path):
+            self.create_branch_submission_dict()
+            with open(file_path, 'wb') as handle:
+                pickle.dump(self.branch_submission_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-        # save features
-        print(time.asctime(time.localtime(time.time())), ': Start save features for', self.data_file_name)
-        logging.info('{}: Start save features for {}'.
-                     format(time.asctime(time.localtime(time.time())), self.data_file_name))
-
-        joblib.dump(self.branch_comments_features_df,
-                    (os.path.join(features_directory, 'branch_comments_features_df_' + self.data_file_name + '.pkl')))
-
-        joblib.dump(self.branch_comments_embedded_text_df,
-                    (os.path.join(features_directory, 'branch_comments_embedded_text_df_' +
-                                  self.data_file_name + '.pkl')))
-
-        joblib.dump(self.branch_comments_user_profiles_df,
-                    (os.path.join(features_directory, 'branch_comments_user_profiles_df_' +
-                                  self.data_file_name + '.pkl')))
-
-        with open(os.path.join(features_directory, 'branch_submission_dict_' + self.data_file_name + '.pickle'),
-                  'wb') as handle:
-            pickle.dump(self.branch_submission_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
-        with open(os.path.join(features_directory, 'submission_data_dict_' + self.data_file_name + '.pickle'), 'wb')\
-                as handle:
-            pickle.dump(self.submission_data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
-        with open(os.path.join(features_directory, 'branch_deltas_data_dict_' + self.data_file_name + '.pickle'),
-                  'wb') as handle:
-            pickle.dump(self.branch_deltas_data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
-        with open(os.path.join(features_directory, 'branches_lengths_list_' + self.data_file_name + '.txt'), 'wb')\
+        # save branches length
+        with open(os.path.join(features_dir_path, 'branches_lengths_list_' + self.data_file_name + '.txt'), 'wb')\
                 as handle:
             pickle.dump(self.branches_lengths_list, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -764,7 +914,7 @@ class CreateFeatures:
         """
 
         no_parent = False
-        quote = copy(comment_body)
+        quote = copy.deepcopy(comment_body)
         nn_index = quote.find('\\n')
         n_index = quote.find('\n')
         if nn_index == -1:  # there is no \\n
@@ -818,20 +968,20 @@ class CreateFeatures:
         """
         # Clean the data
         print('{}: Clean the data'.format((time.asctime(time.localtime(time.time())))))
-        logging.info('{}: Clean the data'.format((time.asctime(time.localtime(time.time())))))
+        logging.info('Clean the data')
 
         data_clean = {row['comment_id']: clean(row['comment_body'], row['comment_id']).split()
                       for index, row in self.data.iterrows()}
 
         # Creating the term dictionary of our corpus, where every unique term is assigned an index.
         print('{}: Create the dictionary'.format((time.asctime(time.localtime(time.time())))))
-        logging.info('{}: Create the dictionary'.format((time.asctime(time.localtime(time.time())))))
+        logging.info('Create the dictionary')
 
         dictionary = gensim.corpora.Dictionary(data_clean.values())
 
         # Converting list of documents (corpus) into Document Term Matrix using dictionary prepared above.
         print('{}: Create units term matrix'.format((time.asctime(time.localtime(time.time())))))
-        logging.info('{}: Create units term matrix'.format((time.asctime(time.localtime(time.time())))))
+        logging.info('Create units term matrix')
 
         data_term_matrix = {index: dictionary.doc2bow(doc) for index, doc in data_clean.items()}
 
@@ -848,7 +998,7 @@ class CreateFeatures:
         else:
             # Clean the data
             print('{}: Clean the {}'.format((time.asctime(time.localtime(time.time()))), self.data_file_name))
-            logging.info('{}: Clean the {}'.format((time.asctime(time.localtime(time.time()))), self.data_file_name))
+            logging.info('Clean the {}'.format(self.data_file_name))
 
             data_clean = {row['comment_id']: clean(row['comment_body'], row['comment_id']).split()
                           for index, row in self.data.iterrows()}
@@ -856,36 +1006,31 @@ class CreateFeatures:
             # Creating the term dictionary of our corpus, where every unique term is assigned an index.
             print('{}: Create the dictionary for {}'.format((time.asctime(time.localtime(time.time()))),
                                                             self.data_file_name))
-            logging.info('{}: Create the dictionary for {}'.format((time.asctime(time.localtime(time.time()))),
-                                                                   self.data_file_name))
+            logging.info('Create the dictionary for {}'.format(self.data_file_name))
             dictionary = gensim.corpora.Dictionary(data_clean.values())
 
             # Converting list of documents (corpus) into Document Term Matrix using dictionary prepared above.
             print('{}: Create data term matrix for {}'.format((time.asctime(time.localtime(time.time()))),
                                                               self.data_file_name))
-            logging.info('{}: Create data term matrix for {}'.format((time.asctime(time.localtime(time.time()))),
-                                                                     self.data_file_name))
+            logging.info('Create data term matrix for {}'.format(self.data_file_name))
             data_term_matrix = {index: dictionary.doc2bow(doc) for index, doc in data_clean.items()}
 
         # Get topics for the data
         print('{}: Predict topics for {}'.format((time.asctime(time.localtime(time.time()))), self.data_file_name))
-        logging.info('{}: Predict topics for {}'.format((time.asctime(time.localtime(time.time()))),
-                                                         self.data_file_name))
+        logging.info('Predict topics for {}'.format(self.data_file_name))
 
-        result = self.lad_model.transform(list(data_term_matrix.values()))
+        result = self.lda_model.transform(list(data_term_matrix.values()))
 
         print('{}: Create final topic model for {}'.format((time.asctime(time.localtime(time.time()))),
                                                            self.data_file_name))
-        logging.info('{}: Create final topic model for {}'.format((time.asctime(time.localtime(time.time()))),
-                                                                   self.data_file_name))
+        logging.info('Create final topic model for {}'.format(self.data_file_name))
         comment_ids_df = pd.DataFrame(list(data_term_matrix.keys()), columns=['comment_id'])
         result_columns = [i for i in range(self.number_of_topics)]
         topic_model_result_df = pd.DataFrame(result, columns=result_columns)
 
         print('{}: Save final topic model for {}'.format((time.asctime(time.localtime(time.time()))),
                                                          self.data_file_name))
-        logging.info('{}: Save final topic model for {}'.format((time.asctime(time.localtime(time.time()))),
-                                                                 self.data_file_name))
+        logging.info('Save final topic model for {}'.format(self.data_file_name))
         topic_model_final_result = pd.concat([comment_ids_df, topic_model_result_df], axis=1)
 
         return topic_model_final_result
@@ -896,16 +1041,18 @@ class CreateFeatures:
         :return:
         """
 
-        print("{}: begin data pre process".format(time.asctime(time.localtime(time.time()))))
-        logging.info("{}: begin data pre process".format(time.asctime(time.localtime(time.time()))))
+        print('{}: begin data pre process'.format(time.asctime(time.localtime(time.time()))))
+        logging.info('begin data pre process')
 
         # get the relevant submission for the data
         submission_list = list(self.data['submission_id'].unique())
         self.all_submissions =\
-            copy(self.all_submissions_total.loc[self.all_submissions_total['submission_id'].isin(submission_list)])
+            copy.deepcopy(
+                self.all_submissions_total.loc[self.all_submissions_total['submission_id'].isin(submission_list)])
 
         branches_list = list(self.data['branch_id'].unique())
-        self.all_branches = copy(self.branch_numbers_df.loc[self.branch_numbers_df.branch_id.isin(branches_list)])
+        self.all_branches = copy.deepcopy(
+            self.branch_numbers_df.loc[self.branch_numbers_df.branch_id.isin(branches_list)])
 
         # remove bot text
         self.all_submissions["submission_body"] = self.all_submissions["submission_body"].str.partition(
@@ -915,8 +1062,8 @@ class CreateFeatures:
         self.all_submissions["submission_title_and_body"] = self.all_submissions["submission_title"]\
                                                             + self.all_submissions["submission_body"]
 
-        print("{}: finish data pre process".format(time.asctime(time.localtime(time.time()))))
-        logging.info("{}: finish data pre process".format(time.asctime(time.localtime(time.time()))))
+        print('{}: finish data pre process'.format(time.asctime(time.localtime(time.time()))))
+        logging.info('finish data pre process')
 
         return
 
@@ -1046,49 +1193,233 @@ def clean(text, comment_id):
     return normalized
 
 
-def main():
+def split_data_and_run(data_type: str, create_features: CreateFeatures, split_number: int):
+    print(f'{time.asctime(time.localtime(time.time()))}: Split {data_type} data to create features')
+    logging.info('Split {} data to create features'.format(data_type))
+
+    all_data = create_features.data
+    data_submissions = all_data.submission_id.unique()
+    print('number of submissions in train data:', data_submissions.shape[0])
+    number_to_choose = round(data_submissions.shape[0] / split_number)
+    last_group_size = data_submissions.shape[0] - number_to_choose * (split_number - 1)
+    group_sizes = [number_to_choose] * (split_number - 1)
+    group_sizes.append(last_group_size)
+    for group_id, group_size in enumerate(group_sizes):
+        if group_id == 0:
+            prev_group_size = 0
+        else:
+            prev_group_size = sum(group_sizes[:group_id])
+        submissions_to_choose = data_submissions[prev_group_size:prev_group_size + group_size]
+        data_set = all_data.loc[all_data.submission_id.isin(submissions_to_choose)].copy()
+        print('{}: Start loading {} data, group number {}'.
+              format((time.asctime(time.localtime(time.time()))), data_type, group_id))
+        logging.info('Start loading {} data, group number {}'.format(data_type, group_id))
+
+        create_features.create_data(data_type + '_' + str(group_id), is_train=False, data=data_set)
+        print('{}: Finish loading the data, start create features'.
+              format((time.asctime(time.localtime(time.time())))))
+        print('data sizes: {} data, group number {}: {}'.format(data_type, group_id, create_features.data.shape))
+        logging.info('Finish loading the data, start create features')
+        logging.info('data sizes: {} data, group number {}: {}'.format(data_type, group_id, create_features.data.shape))
+        create_features.create_all_features()
+
+    return
+
+
+def not_parallel_main():
+    data_to_create_features = ['train']
+    log_file_name = os.path.join(log_directory, datetime.now().strftime(
+                                    f'LogFile_create_features_delta_{data_to_create_features}_%d_%m_%Y_%H_%M_%S.log'))
+    logging.basicConfig(filename=log_file_name,
+                        level=logging.DEBUG,
+                        format='%(asctime)s: %(levelname)s %(message)s',
+                        datefmt='%H:%M:%S',
+                        )
     topics_number = 15
+    split_number = 10
     print('{}: Create object'.format((time.asctime(time.localtime(time.time())))))
-    logging.info('{}: Create object'.format((time.asctime(time.localtime(time.time())))))
+    logging.info('Create object')
     create_features = CreateFeatures(topics_number)
 
     print('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
-    logging.info('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
+    logging.info('Loading train data')
     create_features.create_data('train', is_train=True)
-    print('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
+
+    print('{}: Finish loading the data'.format((time.asctime(time.localtime(time.time())))))
     print('data sizes: train data: {}'.format(create_features.data.shape))
-    logging.info('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
+    logging.info('Finish loading the data')
     logging.info('data sizes: train data: {}'.format(create_features.data.shape))
-    create_features.create_all_features()
 
-    print('{}: Finish creating train data features, start loading test data'.
-          format((time.asctime(time.localtime(time.time())))))
-    logging.info('{}: Finish creating train data features, start loading test data'.
-                 format((time.asctime(time.localtime(time.time())))))
+    if 'train' in data_to_create_features:
+        split_data_and_run('train', create_features, split_number)
+        print('{}: Finish creating train data features'.format((time.asctime(time.localtime(time.time())))))
+        logging.info('Finish creating train data features')
 
-    create_features.create_data('test', is_train=False)
-    print('{}: Finish loading the data, start create features'.
-          format((time.asctime(time.localtime(time.time())))))
-    print('data sizes: test data: {}'.format(create_features.data.shape))
-    logging.info('{}: Finish loading the data, start create features'.
-                 format((time.asctime(time.localtime(time.time())))))
-    logging.info('data sizes: test data: {}'.format(create_features.data.shape))
-    create_features.create_all_features()
+    if 'test' in data_to_create_features:
+        print('{}: Start loading test data'.format((time.asctime(time.localtime(time.time())))))
+        logging.info('Start loading test data')
+        create_features.create_data('test', is_train=False)
 
-    print('{}: Finish creating test data features, start loading val data'.
-          format((time.asctime(time.localtime(time.time())))))
-    logging.info('{}: Finish creating test data features, start loading val data'.
-                 format((time.asctime(time.localtime(time.time())))))
-    create_features.create_data('val', is_train=False)
-    print('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
-    print('data sizes: val data: {}'.format(create_features.data.shape))
-    logging.info('{}: Finish loading the data, start create features'.format((time.asctime(time.localtime(time.time())))))
-    logging.info('data sizes: val data: {}'.format(create_features.data.shape))
-    create_features.create_all_features()
+        split_data_and_run('test', create_features, split_number)
 
-    print('{}: Finish creating val data features'.format((time.asctime(time.localtime(time.time())))))
-    logging.info('{}: Finish creating val data features'.format((time.asctime(time.localtime(time.time())))))
+        print('{}: Finish creating test data features'.format((time.asctime(time.localtime(time.time())))))
+        logging.info('Finish creating test data features')
+
+    if 'val' in data_to_create_features:
+        print('{}: Start loading val data'.format((time.asctime(time.localtime(time.time())))))
+        logging.info('Start loading val data')
+        create_features.create_data('val', is_train=False)
+
+        split_data_and_run('val', create_features, split_number)
+
+        print('{}: Finish creating val data features'.format((time.asctime(time.localtime(time.time())))))
+        logging.info('Finish creating val data features')
+
+    print('{}: Done!'.format((time.asctime(time.localtime(time.time())))))
+    logging.info('Done!')
+
+    return
+
+
+@ray.remote
+def execute_parallel(data_set, data_type: str):
+    """
+    This function run the process of creating features in parallel
+    :param data_set: directory to read the data from
+    :param data_type: which data we use- train/test/val
+    :return:
+    """
+    log_file_name = os.path.join(log_directory, datetime.now().strftime(
+                                    f'LogFile_create_features_delta_{data_set}_%d_%m_%Y_%H_%M_%S.log'))
+    logging.basicConfig(filename=log_file_name,
+                        level=logging.DEBUG,
+                        format='%(asctime)s: %(levelname)s %(message)s',
+                        datefmt='%H:%M:%S',
+                        )
+
+    topics_number = 15
+    print('{}: Create object'.format((time.asctime(time.localtime(time.time())))))
+    logging.info('{}: Create object'.format((time.asctime(time.localtime(time.time())))))
+    inner_max_branch_length = max_branch_length_dict[data_type]
+    create_features = CreateFeatures(topics_number, inner_max_branch_length)
+
+    print('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
+    logging.info('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
+    # load_data to be False if we already have the trained model and we don't need to load the train data
+    trained_models_dir = os.path.join(train_test_data_directory, 'split_data', data_set, 'trained_models')
+    create_features.create_data('train', is_train=True, load_data=False, trained_models_dir=trained_models_dir)
+
+    print('{}: Start run data set {}'.format((time.asctime(time.localtime(time.time()))), data_set))
+    logging.info('Start run data set {}'.format(data_set))
+
+    features_dir_path = os.path.join(features_directory, data_set)
+    if not os.path.exists(features_dir_path):
+        os.makedirs(features_dir_path)
+
+    curr_data_directory = os.path.join(train_test_data_directory, 'split_data', data_set)
+
+    print('{}: Loading data'.format((time.asctime(time.localtime(time.time())))))
+    logging.info('Loading data')
+    create_features.create_data(data_type, is_train=False, data_dir=curr_data_directory)
+
+    print('{}: Finish loading the data. Data sizes: {}. Start create features'.
+          format((time.asctime(time.localtime(time.time()))), create_features.data.shape))
+    logging.info('Finish loading the data. Data sizes: {}. Start create features'.format(create_features.data.shape))
+
+    create_features.create_all_features(features_dir_path)
+
+    print('{}: Finish creating features'.format((time.asctime(time.localtime(time.time())))))
+    logging.info('Finish creating features')
+
+    return data_set + ' is ready'
+
+
+def parallel_main():
+    ray.init()
+
+    print('{}: Start run in parallel'.format((time.asctime(time.localtime(time.time())))))
+    logging.info('{}: Start run in parallel'.format((time.asctime(time.localtime(time.time())))))
+
+    # data_dirs = [data for data in os.listdir(os.path.join(train_test_data_directory, 'split_data'))
+    #              if data.startswith('train')]
+    data_dirs = os.listdir(os.path.join(train_test_data_directory, 'split_data'))
+    print(f'Directories are: {data_dirs}')
+
+    all_ready_lng = ray.get([execute_parallel.remote(data_set, data_set[:5])
+                             for data_set in data_dirs])
+
+    print('{}: Done! {}'.format((time.asctime(time.localtime(time.time()))), all_ready_lng))
+    logging.info('{}: Done! {}'.format((time.asctime(time.localtime(time.time()))), all_ready_lng))
+
+    return
+
+
+def manual_parallel_main():
+    data_set = sys.argv[2]
+    print(f'Running on {data_set}')
+    logging.info('Running on {}'.format(data_set))
+
+    log_file_name = os.path.join(log_directory, datetime.now().strftime(
+        f'LogFile_create_features_delta_{data_set}_%d_%m_%Y_%H_%M_%S.log'))
+    logging.basicConfig(filename=log_file_name,
+                        level=logging.DEBUG,
+                        format='%(asctime)s: %(levelname)s %(message)s',
+                        datefmt='%H:%M:%S',
+                        )
+    topics_number = 15
+    print('{}: Create object'.format((time.asctime(time.localtime(time.time())))))
+    logging.info('Create object')
+    inner_max_branch_length = max_branch_length_dict[data_set[:5]]
+    create_features = CreateFeatures(topics_number, inner_max_branch_length)
+
+    print('{}: Loading train data or fitted models'.format((time.asctime(time.localtime(time.time())))))
+    logging.info('Loading train data or fitted models')
+    # load_data to be False if we already have the trained model and we don't need to load the train data
+    trained_models_dir = os.path.join(train_test_data_directory, 'split_data', data_set, 'trained_models')
+    create_features.create_data('train', is_train=True, load_data=False, trained_models_dir=trained_models_dir)
+
+    features_dir_path = os.path.join(features_directory, data_set)
+    if not os.path.exists(features_dir_path):
+        os.makedirs(features_dir_path)
+
+    curr_data_directory = os.path.join(train_test_data_directory, 'split_data', data_set)
+
+    print('{}: Loading data'.format((time.asctime(time.localtime(time.time())))))
+    logging.info('Loading data')
+    create_features.create_data(data_set[:5], is_train=False, data_dir=curr_data_directory)
+
+    print('{}: Finish loading the data. Data sizes: {}. Start create features'.
+          format((time.asctime(time.localtime(time.time()))), create_features.data.shape))
+    logging.info(
+        'Finish loading the data. Data sizes: {}. Start create features'.format(create_features.data.shape))
+
+    create_features.create_all_features(features_dir_path)
+
+    print('{}: Finish creating features'.format((time.asctime(time.localtime(time.time())))))
+    logging.info('Finish creating features')
+
+    print('{}: Done!'.format((time.asctime(time.localtime(time.time())))))
+    logging.info('Done!')
+
+    return
 
 
 if __name__ == '__main__':
-    main()
+    """
+    sys.argv[1] = main_func
+    sys.argv[2] = data_dir
+    """
+    main_func = sys.argv[1]
+    print(f'Start run {main_func}')
+    logging.info('Start run {}'.format(main_func))
+
+    if main_func == 'parallel_main':
+        parallel_main()
+    elif main_func == 'not_parallel_main':
+        not_parallel_main()
+    elif main_func == 'manual_parallel_main':
+        manual_parallel_main()
+    else:
+        print(f'{main_func} is not main function in this code')
+        logging.info('{} is not main function in this code'.format(main_func))
+
