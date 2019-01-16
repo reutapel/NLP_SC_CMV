@@ -5,6 +5,7 @@ from torch.utils import data as dt
 from DeltaModel import DeltaModel
 from model_utils import InitLstm
 from model_utils import InitConv1d
+from import_split_data import ImportSplitData
 import pandas as pd
 from tqdm import tqdm
 from time import gmtime, strftime
@@ -284,31 +285,41 @@ def replace_0_with_list(df, len_list_in_cell):
 def main():
 
     debug = 0
-    base_dir = os.path.abspath(os.curdir)
-    features_dir = os.path.join(base_dir, "features", "small_data_features")
+
+    import_split_data_obj = ImportSplitData()
+    all_data_dict = import_split_data_obj.sort_joined_data()
+
     if not debug:
+
         # load train data
-        branch_comments_embedded_text_df_train = joblib.load(os.path.join(features_dir,
-                                                                          "branch_comments_embedded_text_df_train.pkl"))
-        branch_comments_features_df_train = joblib.load(os.path.join(features_dir,
-                                                                     "branch_comments_features_df_train.pkl"))
-        branch_comments_user_profiles_df_train = joblib.load(os.path.join(features_dir,
-                                                                          "branch_comments_user_profiles_df_train.pkl"))
-        branch_submission_dict_train = joblib.load(os.path.join(features_dir, "branch_submission_dict_train.pickle"))
-        submission_data_dict_train = joblib.load(os.path.join(features_dir, "submission_data_dict_train.pickle"))
-        branch_deltas_data_dict_train = joblib.load(os.path.join(features_dir, "branch_deltas_data_dict_train.pickle"))
-        branches_lengths_list_train = joblib.load(os.path.join(features_dir, "branches_lengths_list_train.txt"))
+        if 'train' in all_data_dict.keys():
+            branch_comments_embedded_text_df_train = all_data_dict['train']['branch_comments_embedded_text_df_train']
+            branch_comments_features_df_train = all_data_dict['train']['branch_comments_features_df_train']
+            branch_comments_user_profiles_df_train = all_data_dict['train']['branch_comments_user_profiles_df_train']
+            branch_submission_dict_train = all_data_dict['train']['branch_submission_dict_train']
+            submission_data_dict_train = all_data_dict['train']['submission_data_dict_train']
+            branch_deltas_data_dict_train = all_data_dict['train']['branch_deltas_data_dict_train']
+            branches_lengths_list_train = all_data_dict['train']['branches_lengths_list_train']
 
         # load test data
-        branch_comments_embedded_text_df_test = joblib.load(os.path.join(features_dir,
-                                                                         "branch_comments_embedded_text_df_test.pkl"))
-        branch_comments_features_df_test = joblib.load(os.path.join(features_dir, "branch_comments_features_df_test.pkl"))
-        branch_comments_user_profiles_df_test = joblib.load(os.path.join(features_dir,
-                                                                         "branch_comments_user_profiles_df_test.pkl"))
-        branch_submission_dict_test = joblib.load(os.path.join(features_dir, "branch_submission_dict_test.pickle"))
-        submission_data_dict_test = joblib.load(os.path.join(features_dir, "submission_data_dict_test.pickle"))
-        branch_deltas_data_dict_test = joblib.load(os.path.join(features_dir, "branch_deltas_data_dict_test.pickle"))
-        branches_lengths_list_test = joblib.load(os.path.join(features_dir, "branches_lengths_list_test.txt"))
+        if 'testi' in all_data_dict.keys():
+            branch_comments_embedded_text_df_test = all_data_dict['testi']['branch_comments_embedded_text_df_test']
+            branch_comments_features_df_test = all_data_dict['testi']['branch_comments_features_df_test']
+            branch_comments_user_profiles_df_test = all_data_dict['testi']['branch_comments_user_profiles_df_test']
+            branch_submission_dict_test = all_data_dict['testi']['branch_submission_dict_test']
+            submission_data_dict_test = all_data_dict['testi']['submission_data_dict_test']
+            branch_deltas_data_dict_test = all_data_dict['testi']['branch_deltas_data_dict_test']
+            branches_lengths_list_test = all_data_dict['testi']['branches_lengths_list_test']
+
+        # load valid data
+        if 'valid' in all_data_dict.keys():
+            branch_comments_embedded_text_df_valid = all_data_dict['valid']['branch_comments_embedded_text_df_valid']
+            branch_comments_features_df_valid = all_data_dict['valid']['branch_comments_features_df_valid']
+            branch_comments_user_profiles_df_valid = all_data_dict['valid']['branch_comments_user_profiles_df_valid']
+            branch_submission_dict_valid = all_data_dict['valid']['branch_submission_dict_valid']
+            submission_data_dict_valid = all_data_dict['valid']['submission_data_dict_valid']
+            branch_deltas_data_dict_valid = all_data_dict['valid']['branch_deltas_data_dict_valid']
+            branches_lengths_list_valid = all_data_dict['valid']['branches_lengths_list_valid']
 
     else:
         # DEBUG
