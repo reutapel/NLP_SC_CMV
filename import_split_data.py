@@ -56,8 +56,15 @@ class ImportSplitData:
     def sort_joined_data(self):
         # for each dataset reindex Dataframes by new joined & sorted len list
         for dataset in self.data_folders_dict.keys():
-            len_dict = pd.DataFrame(data=self.all_data_dict[dataset]['branches_lengths_list_train'],
-                                    index=self.all_data_dict[dataset]['branch_comments_embedded_text_df_train'].index)
+            if dataset == 'train':
+                dataset_suffix = 'train'
+            elif dataset == 'testi':
+                dataset_suffix = 'test'
+            else:
+                dataset_suffix = 'valid'
+            len_dict = pd.DataFrame(data=self.all_data_dict[dataset]['branches_lengths_list_' + dataset_suffix],
+                                    index=self.all_data_dict[dataset]['branch_comments_embedded_text_df_'
+                                                                      + dataset_suffix].index)
             len_dict.sort_values(by=0, ascending=False, inplace=True)
             sorted_index_list = list(len_dict.index)
             for var in self.all_data_dict[dataset].keys():
