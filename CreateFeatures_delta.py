@@ -97,7 +97,8 @@ class CreateFeatures:
         # Create submissions data:
         self.all_submissions_total = pd.read_csv(os.path.join(save_data_directory,
                                                               'all_submissions_final_after_remove.csv'))
-        self.all_submissions = copy.deepcopy(self.all_submissions_total)
+        self.all_submissions = None
+        self.all_data_set_submissions = None
 
         # Load all relevant data
 
@@ -107,6 +108,7 @@ class CreateFeatures:
                              'submission_author', 'submission_title']
 
         self.data = None
+        self.all_data = None
 
         # define branch_comments_raw_text_df with number of columns as the max_branch_length
         self.branch_comments_embedded_text_df = None
@@ -165,7 +167,7 @@ class CreateFeatures:
         return
 
     def create_data(self, data_file_name, is_train, load_data=True, data=None, data_dir=train_test_data_directory,
-                    trained_models_dir=trained_models_directory):
+                    trained_models_dir=trained_models_directory, all_data=None):
         """
         This function create the data based on the data_file_name
         :param str data_file_name: the data to create (train, test, val)
@@ -173,6 +175,8 @@ class CreateFeatures:
         :param data: the data itself, if already load it
         :param data_dir: if we load from directory which is not the main one
         :param bool load_data: if we want to load the data or no need to
+        :param trained_models_dir: the path of the trained models directory
+        :param all_data: all the data of the data set (train, test, val)- no split data
         :return:
         """
         self.data_file_name = data_file_name
@@ -200,13 +204,36 @@ class CreateFeatures:
 
                 self.data = self.data.merge(comment_branch_groupby, on='comment_id')
 
+                # load and do the pre process on all_data
+                print(f'{time.asctime(time.localtime(time.time()))}: Loading all data {data_file_name} from {data_dir}')
+                logging.info('Loading all data {} from {}'.format(data_file_name, data_dir))
+                self.all_data = pd.read_csv(os.path.join(data_dir, 'all_' + data_file_name + '_data.csv'),
+                                            skipinitialspace=True, usecols=self.data_columns)
+                self.all_data['comment_created_utc'] = self.all_data['comment_created_utc'].astype(int)
+                self.all_data['time_between'] = self.all_data['comment_created_utc'] -\
+                                                self.all_data['submission_created_utc']
+
+                # Features calculated for all the data frame:
+                self.all_data['comment_len'] = self.all_data['comment_body'].str.len()
+
+                # get number of branches for each comment
+                comment_branch = self.all_data[['comment_id', 'branch_id']]
+                comment_branch_groupby = comment_branch.groupby(by='comment_id').count()
+                comment_branch_groupby['comment_id'] = comment_branch_groupby.index
+                comment_branch_groupby.columns = ['number_of_branches', 'comment_id']
+
+                self.all_data = self.all_data.merge(comment_branch_groupby, on='comment_id')
+
             else:
                 self.data = data
+                self.all_data = all_data
 
             self.data_pre_process()
 
             # self.data['submission_created_utc'] = self.data['submission_created_utc'].astype(int)
             self.all_submissions['submission_created_utc'] = self.all_submissions['submission_created_utc'].astype(int)
+            self.all_data_set_submissions['submission_created_utc'] =\
+                self.all_data_set_submissions['submission_created_utc'].astype(int)
 
             # get the max number of comments in a branch
             if self.max_branch_length is None:  # if we didn't define this length before
@@ -230,7 +257,8 @@ class CreateFeatures:
 
             # Create vocabulary of the text of the data
             # data after drop duplications:
-            self.submission_no_dup = self.all_submissions[['submission_author', 'submission_id', 'submission_created_utc']]
+            self.submission_no_dup = self.all_submissions[['submission_author', 'submission_id',
+                                                           'submission_created_utc']]
 
             print("{}: Start create vocab".format(time.asctime(time.localtime(time.time()))))
             logging.info('Start create vocab')
@@ -239,8 +267,8 @@ class CreateFeatures:
             logging.info('Finish create vocab')
 
             # create dict with the data for each submission:
-            submission_comments_dict_file_path = os.path.join(data_dir, 'trained_models',
-                                                              'submission_comments_dict_' + self.data_file_name + '.pkl')
+            submission_comments_dict_file_path =\
+                os.path.join(data_dir, 'trained_models', 'submission_comments_dict_' + self.data_file_name + '.pkl')
             if not os.path.isfile(submission_comments_dict_file_path):
                 print('{}: Start create submission dict for {}'.format((time.asctime(time.localtime(time.time()))),
                                                                        self.data_file_name))
@@ -250,7 +278,8 @@ class CreateFeatures:
                 submission_ids = self.submission_no_dup['submission_id']
                 for index, submission_id in submission_ids.iteritems():
                     self.submission_comments_dict[submission_id] =\
-                        self.data.loc[self.data['submission_id'] == submission_id].drop_duplicates(subset='comment_id')
+                        self.all_data.loc[self.all_data['submission_id'] == submission_id].\
+                            drop_duplicates(subset='comment_id')
 
                 joblib.dump(self.submission_comments_dict, submission_comments_dict_file_path)
                 print('time to create submission dict: ', time.time() - start_time)
@@ -285,8 +314,7 @@ class CreateFeatures:
                 print('{}: begin fitting tfidf'.format(time.asctime(time.localtime(time.time()))))
                 logging.info('begin fitting tfidf')
                 self.tfidf_vec_fitted = TfidfVectorizer(stop_words='english', lowercase=True, analyzer='word',
-                                                        norm='l2',
-                                                        smooth_idf=True, sublinear_tf=False, use_idf=True)
+                                                        norm='l2', smooth_idf=True, sublinear_tf=False, use_idf=True)
                 self.tfidf_vec_fitted.fit(self.vocab_df)
                 joblib.dump(self.tfidf_vec_fitted, tfidf_vec_fitted_file_path)
                 print('{}: finish fitting tfidf'.format(time.asctime(time.localtime(time.time()))))
@@ -342,8 +370,8 @@ class CreateFeatures:
                 print('{}: Create and train Doc2Vec model on {}'.format((time.asctime(time.localtime(time.time()))),
                                                                         self.data_file_name))
                 logging.info('Create and train Doc2Vec model on {}'.format(self.data_file_name))
-                submission_body = self.all_submissions['submission_body']
-                comments_body = self.data['comment_body']
+                submission_body = self.all_data_set_submissions['submission_body']
+                comments_body = self.all_data['comment_body']
                 train_data_doc2vec = submission_body.append(comments_body, ignore_index=True)
                 train_data_doc2vec = pd.Series(train_data_doc2vec.unique())
                 self.doc2vec_model = Doc2Vec(fname='', linux=False, use_file=False, data=train_data_doc2vec,
@@ -612,7 +640,7 @@ class CreateFeatures:
             comment_features.loc['nltk_sim_sen'] = cosine_similarity(sentiment_sub, sentiment_com)[0][0]
 
             # percent of adjective in the comment:
-            comment_features.loc['percent_adj'] = percent_of_adj(comment_body)
+            comment_features.loc['percent_adj'] = percent_of_adj(comment_body, comment['comment_id'])
 
             # Get comment author features:
             comment_user_features.loc['commenter_number_submission'] = \
@@ -759,12 +787,13 @@ class CreateFeatures:
         :rtype int
         """
         if messages_type == 'comment':
-            relevant_data = self.data.loc[(self.data[messages_type + '_author'] == user)
-                                              & (self.data[messages_type + '_created_utc'] < comment_time)]
+            relevant_data = self.all_data.loc[(self.all_data[messages_type + '_author'] == user)
+                                              & (self.all_data[messages_type + '_created_utc'] < comment_time)]
         else:
             relevant_data =\
-                self.submission_no_dup.loc[(self.submission_no_dup[messages_type + '_author'] == user)
-                                           & (self.submission_no_dup[messages_type + '_created_utc'] < comment_time)]
+                self.all_data_set_submissions.loc[
+                    (self.all_data_set_submissions[messages_type + '_author'] == user)
+                    & (self.all_data_set_submissions[messages_type + '_created_utc'] < comment_time)]
         number_of_posts = relevant_data.shape[0]
 
         return number_of_posts
@@ -865,8 +894,9 @@ class CreateFeatures:
         :param str user: the user name
         :return: int the number of days since the first post of the user (submissions and comments)
         """
-        user_all_comments = self.data.loc[self.data['comment_author'] == user]
-        user_all_submissions = self.all_submissions.loc[self.all_submissions['submission_author'] == user]
+        user_all_comments = self.all_data.loc[self.all_data['comment_author'] == user]
+        user_all_submissions = self.all_data_set_submissions.loc[
+            self.all_data_set_submissions['submission_author'] == user]
         first_comment_time = user_all_comments.comment_created_utc.min()
         first_submission_time = user_all_submissions.submission_created_utc.min()
         if not user_all_comments.empty:  # the user has not write any comment - so the min will be nan
@@ -1046,9 +1076,13 @@ class CreateFeatures:
 
         # get the relevant submission for the data
         submission_list = list(self.data['submission_id'].unique())
-        self.all_submissions =\
-            copy.deepcopy(
-                self.all_submissions_total.loc[self.all_submissions_total['submission_id'].isin(submission_list)])
+        self.all_submissions = copy.deepcopy(
+            self.all_submissions_total.loc[self.all_submissions_total['submission_id'].isin(submission_list)])
+
+        all_data_submission_list = list(self.all_data['submission_id'].unique())
+        self.all_data_set_submissions =\
+            copy.deepcopy(self.all_submissions_total.loc[self.all_submissions_total['submission_id'].isin(
+                all_data_submission_list)])
 
         branches_list = list(self.data['branch_id'].unique())
         self.all_branches = copy.deepcopy(
@@ -1058,9 +1092,11 @@ class CreateFeatures:
         self.all_submissions["submission_body"] = self.all_submissions["submission_body"].str.partition(
             "Hello, users of CMV! This is a footnote from your moderators")[0]
 
-        # concat submissions text
-        self.all_submissions["submission_title_and_body"] = self.all_submissions["submission_title"]\
-                                                            + self.all_submissions["submission_body"]
+        # concat submissions text and title
+        self.all_submissions["submission_title_and_body"] =\
+            self.all_submissions["submission_title"] + self.all_submissions["submission_body"]
+        self.all_data_set_submissions["submission_title_and_body"] =\
+            self.all_data_set_submissions["submission_title"] + self.all_data_set_submissions["submission_body"]
 
         print('{}: finish data pre process'.format(time.asctime(time.localtime(time.time()))))
         logging.info('finish data pre process')
@@ -1076,27 +1112,28 @@ class CreateFeatures:
         :return: the concatenated text
         """
         if is_submission:
-            text = self.all_submissions.loc[(self.all_submissions['submission_created_utc'] <= comment_created_utc) &
-                                            (self.all_submissions['submission_author']
-                                             == author)]["submission_title_and_body"]
+            text = self.all_data_set_submissions.loc[
+                (self.all_data_set_submissions['submission_created_utc'] <= comment_created_utc) &
+                (self.all_data_set_submissions['submission_author'] == author)]["submission_title_and_body"]
             text_cat = text.str.cat(sep=' ')
             return text_cat
 
-        text = self.data.loc[(self.data['comment_created_utc'] <= comment_created_utc) &
-                             (self.data['comment_author'] == author)]["comment_body"]
+        text = self.all_data.loc[(self.all_data['comment_created_utc'] <= comment_created_utc) &
+                                 (self.all_data['comment_author'] == author)]["comment_body"]
         text_cat = text.str.cat(sep=' ')
 
         return text_cat
 
     def create_vocab(self):
         """
-        This function create a vocabulary - all the submissions and comments body in the data
+        This function create a vocabulary - all the submissions and comments body in the data.
+        Create the vocab over the all data set and not only the split
         :return:
         """
 
         # get all comments for vocab
-        vocab_c = self.data["comment_body"]
-        vocab_s = self.all_submissions["submission_title_and_body"]
+        vocab_c = self.all_data["comment_body"]
+        vocab_s = self.all_data_set_submissions["submission_title_and_body"]
 
         # join two strings of comments and submissions
         vocab_df = pd.concat([vocab_c, vocab_s])
@@ -1109,7 +1146,7 @@ class CreateFeatures:
     def calc_tf_idf_cos(self, comment_created_utc, comment_author, submission_author):
         """
         This function calculate the TFIDF similarity between the submitter and commenter text
-        before the comment was written
+        before the comment was written for all the data, not only the split
         :param int comment_created_utc: the time the comment was posted
         :param str comment_author: the name of the comment author
         :param str submission_author: the name of the submission author
@@ -1161,12 +1198,13 @@ def get_POS(text):
     return words_pos
 
 
-def percent_of_adj(text):
+def percent_of_adj(text, comment_id):
     """
     This function calculate the % of the adjectives in the text
     :param str text: the text we want to calculate its %
     :return: float: number_adj_pos/number_all_pos in the text
     """
+    print(f'comment_id: {comment_id} with text {text}')
     pos_text = get_POS(text)
     pos_df = pd.DataFrame(pos_text, columns=['word', 'POS'])
     number_all_pos = pos_df.shape[0]
@@ -1337,16 +1375,27 @@ def execute_parallel(data_set, data_type: str):
 def parallel_main():
     ray.init()
 
-    print('{}: Start run in parallel'.format((time.asctime(time.localtime(time.time())))))
-    logging.info('{}: Start run in parallel'.format((time.asctime(time.localtime(time.time())))))
+    if len(sys.argv) > 1:
+        data_type = sys.argv[2]
+        specific_data_type = True
+    else:
+        specific_data_type = False
+        data_type = ''
+
+    print('{}: Start run in parallel for data type {}'.format((time.asctime(time.localtime(time.time()))), data_type))
+    logging.info('{}: Start run in parallel for data type {}'.format((time.asctime(time.localtime(time.time()))),
+                                                                     data_type))
 
     # data_dirs = [data for data in os.listdir(os.path.join(train_test_data_directory, 'split_data'))
     #              if data.startswith('train')]
-    data_dirs = os.listdir(os.path.join(train_test_data_directory, 'split_data'))
+    if not specific_data_type:
+        data_dirs = os.listdir(os.path.join(train_test_data_directory, 'split_data'))
+    else:
+        data_dirs = [data for data in os.listdir(os.path.join(train_test_data_directory, 'split_data'))
+                     if data.startswith(data_type)]
     print(f'Directories are: {data_dirs}')
 
-    all_ready_lng = ray.get([execute_parallel.remote(data_set, data_set[:5])
-                             for data_set in data_dirs])
+    all_ready_lng = ray.get([execute_parallel.remote(data_set, data_set[:5]) for data_set in data_dirs])
 
     print('{}: Done! {}'.format((time.asctime(time.localtime(time.time()))), all_ready_lng))
     logging.info('{}: Done! {}'.format((time.asctime(time.localtime(time.time()))), all_ready_lng))
@@ -1407,7 +1456,7 @@ def manual_parallel_main():
 if __name__ == '__main__':
     """
     sys.argv[1] = main_func
-    sys.argv[2] = data_dir
+    sys.argv[2] = data_dir / data_type to run in ray
     """
     main_func = sys.argv[1]
     print(f'Start run {main_func}')
