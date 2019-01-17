@@ -15,7 +15,7 @@ class CustomDataset(dt.Dataset):
     """
     # TODO: REUT: df columns should be com1, com2 ... important for tensor ordering
     def __init__(self, branch_comments_embedded_text_df, branch_comments_features_df, branch_comments_user_profiles_df,
-                 branch_submission_dict, submission_data_dict, branch_deltas_data_dict, branches_lengths_list):
+                 branch_submission_dict, submission_data_dict, branch_deltas_data_dict, branches_lengths_list, len_df):
         """
         this method uploads and organize all elements in the data for the different parts of the model
         all parts of data, are ordered by length of branch - descending, rest of entries are filled with zeros
@@ -28,6 +28,7 @@ class CustomDataset(dt.Dataset):
         :param branch_deltas_data_dict: {branch index:
         [is delta in branch, number of deltas in branch, [deltas comments location in branch]]}
         :param branches_lengths_list: actual branches lengths without padding for the batch learning
+        :param len_df: a sorted df that contains the original branch indexes as index and their length in sorted column
         """
 
         self.branch_comments_embedded_text_tensor = self.df_to_tensor(branch_comments_embedded_text_df)
@@ -43,6 +44,8 @@ class CustomDataset(dt.Dataset):
 
         self.branches_lengths = branches_lengths_list
 
+        self.len_df = len_df
+
     def __getitem__(self, index):
         """
         this method takes all elements of a single data point for one iteration of the model, and returns them with
@@ -54,12 +57,12 @@ class CustomDataset(dt.Dataset):
         x = [self.branch_comments_embedded_text_tensor[index],
              self.branch_comments_features_tensor[index],
              self.branch_comments_user_profiles_tensor[index],
-             tr.Tensor(self.submission_data_dict[self.branch_submission_dict[index][0]][0]),
-             tr.Tensor(self.submission_data_dict[self.branch_submission_dict[index][0]][1]),
-             tr.Tensor(self.submission_data_dict[self.branch_submission_dict[index][0]][2]),
-             tr.Tensor(self.branch_submission_dict[index][1].astype('float')),
+             tr.Tensor(self.submission_data_dict[self.branch_submission_dict[self.len_df.iloc[index].name][0]][0]),
+             tr.Tensor(self.submission_data_dict[self.branch_submission_dict[self.len_df.iloc[index].name][0]][1]),
+             tr.Tensor(self.submission_data_dict[self.branch_submission_dict[self.len_df.iloc[index].name][0]][2]),
+             tr.Tensor(self.branch_submission_dict[self.len_df.iloc[index].name][1].astype('float')),
              self.branches_lengths[index]]
-        y = self.branch_deltas_data_dict[index][0]
+        y = self.branch_deltas_data_dict[self.len_df.iloc[index].name][0]
         return x, y
 
     def __len__(self):

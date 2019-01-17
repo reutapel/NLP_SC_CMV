@@ -300,6 +300,7 @@ def main():
             submission_data_dict_train = all_data_dict['train']['submission_data_dict_train']
             branch_deltas_data_dict_train = all_data_dict['train']['branch_deltas_data_dict_train']
             branches_lengths_list_train = all_data_dict['train']['branches_lengths_list_train']
+            len_df_train = all_data_dict['train']['len_df']
 
         # load test data
         if 'testi' in all_data_dict.keys():
@@ -310,6 +311,7 @@ def main():
             submission_data_dict_test = all_data_dict['testi']['submission_data_dict_test']
             branch_deltas_data_dict_test = all_data_dict['testi']['branch_deltas_data_dict_test']
             branches_lengths_list_test = all_data_dict['testi']['branches_lengths_list_test']
+            len_df_test = all_data_dict['testi']['len_df']
 
         # load valid data
         if 'valid' in all_data_dict.keys():
@@ -320,6 +322,7 @@ def main():
             submission_data_dict_valid = all_data_dict['valid']['submission_data_dict_valid']
             branch_deltas_data_dict_valid = all_data_dict['valid']['branch_deltas_data_dict_valid']
             branches_lengths_list_valid = all_data_dict['valid']['branches_lengths_list_valid']
+            len_df_valid = all_data_dict['valid']['len_df']
 
     else:
         # DEBUG
@@ -355,18 +358,18 @@ def main():
 
     train_data = branch_comments_embedded_text_df_train, branch_comments_features_df_train, \
                  branch_comments_user_profiles_df_train, branch_submission_dict_train, submission_data_dict_train, \
-                 branch_deltas_data_dict_train, branches_lengths_list_train
+                 branch_deltas_data_dict_train, branches_lengths_list_train, len_df_train
 
     test_data = branch_comments_embedded_text_df_test, branch_comments_features_df_test, \
                 branch_comments_user_profiles_df_test, branch_submission_dict_test, submission_data_dict_test, \
-                branch_deltas_data_dict_test, branches_lengths_list_test
+                branch_deltas_data_dict_test, branches_lengths_list_test, len_df_test
 
     # define hyper parameters of learning phase
     # log makes differences expand to higher numbers because of it's behaivor between 0 to 1
     criterion = nn.BCEWithLogitsLoss()
     learning_rate = 0.001 # range 0.0003-0.001 batch grows -> lr grows
     batch_size = 24  # TRY BATCH SIZE 100
-    num_epochs = 100
+    num_epochs = 2
     num_labels = 2
     fc1 = 32
     fc2 = 16
@@ -374,11 +377,11 @@ def main():
     fc2_dropout = 0.5
 
     # define LSTM layers hyperparameters
-    init_lstm_text = InitLstm(input_size=len(branch_comments_embedded_text_df_train.loc[0,0]), hidden_size=20,
+    init_lstm_text = InitLstm(input_size=len(branch_comments_embedded_text_df_train.iloc[0,0]), hidden_size=20,
                               num_layers=2, batch_first=True)
-    init_lstm_comments = InitLstm(input_size=len(branch_comments_features_df_train.loc[0,0]), hidden_size=10,
+    init_lstm_comments = InitLstm(input_size=len(branch_comments_features_df_train.iloc[0,0]), hidden_size=10,
                                   num_layers=2, batch_first=True)
-    init_lstm_users = InitLstm(input_size=len(branch_comments_user_profiles_df_train.loc[0,0]), hidden_size=10,
+    init_lstm_users = InitLstm(input_size=len(branch_comments_user_profiles_df_train.iloc[0,0]), hidden_size=10,
                                num_layers=2, batch_first=True)
 
     # define conv layers hyperparameters
@@ -389,9 +392,10 @@ def main():
     init_conv_sub_profile_features = InitConv1d(in_channels=1, out_channels=9, kernel_size=3, stride=1, padding=0,
                                                 leaky_relu_alpha=0.2)
 
-    input_size_text_sub = len(branch_comments_embedded_text_df_train.loc[0,0])
+    input_size_text_sub = len(branch_comments_embedded_text_df_train.iloc[0, 0])
     input_size_sub_features = len(submission_data_dict_train[list(submission_data_dict_train.keys())[0]][1]) + \
-                              len(branch_submission_dict_train[0][1])  # submission features + branch features
+                              len(branch_submission_dict_train[list(branch_submission_dict_train.keys())[0]][1])
+                                # submission features + branch features
     input_size_sub_profile_features = len(submission_data_dict_train[list(submission_data_dict_train.keys())[0]][2])
 
     # create training instance
