@@ -46,7 +46,7 @@ lemma = WordNetLemmatizer()
 sid = SentimentIntensityAnalyzer()
 
 max_branch_length_dict = {
-    'train': 108,
+    'train': 38,  # 108
     'testi': 102,
     'valid': 106,
 }
@@ -546,8 +546,8 @@ class CreateFeatures:
 
             # self.branch_comments_embedded_text_df = self.branch_comments_embedded_text_df.append(branch_comments_body)
 
-        self.branch_comments_embedded_text_df = pd.DataFrame.from_dict(self.branch_comments_embedded_text_df,
-                                                                       orient='index')
+        self.branch_comments_embedded_text_df = pd.DataFrame.from_records(
+            list(self.branch_comments_embedded_text_df.values()), index=list(self.branch_comments_embedded_text_df.keys()))
         print(time.asctime(time.localtime(time.time())), ': Finish comments text creation')
         logging.info('Finish comments text creation')
 
@@ -717,9 +717,10 @@ class CreateFeatures:
         # self.branch_comments_user_profiles_df = self.branch_comments_user_profiles_df.fillna(
         #     np.zeros(shape=len(self.comments_user_features_columns)))
 
-        self.branch_comments_features_df = pd.DataFrame.from_dict(self.branch_comments_features_df, orient='index')
-        self.branch_comments_user_profiles_df = \
-            pd.DataFrame.from_dict(self.branch_comments_user_profiles_df, orient='index')
+        self.branch_comments_features_df = pd.DataFrame.from_records(
+            list(self.branch_comments_features_df.values()), index=list(self.branch_comments_features_df.keys()))
+        self.branch_comments_user_profiles_df = pd.DataFrame.from_records(
+            list(self.branch_comments_user_profiles_df.values()), index=list(self.branch_comments_user_profiles_df.keys()))
 
         return
 
@@ -730,6 +731,13 @@ class CreateFeatures:
         :param features_dir_path: in which directory to save the features
         :return:
         """
+
+        # create branch_deltas_data_dict
+        file_path = os.path.join(features_dir_path, 'branch_deltas_data_dict_' + self.data_file_name + '.pickle')
+        if not os.path.isfile(file_path):
+            self.create_branch_deltas_data_dict()
+            with open(file_path, 'wb') as handle:
+                pickle.dump(self.branch_deltas_data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         # create branch comments text data frame
         file_path = os.path.join(features_dir_path, 'branch_comments_embedded_text_df_' + self.data_file_name + '.pkl')
@@ -755,13 +763,6 @@ class CreateFeatures:
             self.create_submission_submitter_features()
             with open(file_path, 'wb') as handle:
                 pickle.dump(self.submission_data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
-        # create branch_deltas_data_dict
-        file_path = os.path.join(features_dir_path, 'branch_deltas_data_dict_' + self.data_file_name + '.pickle')
-        if not os.path.isfile(file_path):
-            self.create_branch_deltas_data_dict()
-            with open(file_path, 'wb') as handle:
-                pickle.dump(self.branch_deltas_data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         # create branch features
         file_path = os.path.join(features_dir_path, 'branch_submission_dict_' + self.data_file_name + '.pickle')
@@ -1204,7 +1205,6 @@ def percent_of_adj(text, comment_id):
     :param str text: the text we want to calculate its %
     :return: float: number_adj_pos/number_all_pos in the text
     """
-    print(f'comment_id: {comment_id} with text {text}')
     pos_text = get_POS(text)
     pos_df = pd.DataFrame(pos_text, columns=['word', 'POS'])
     number_all_pos = pos_df.shape[0]
