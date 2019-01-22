@@ -9,7 +9,7 @@ class ImportSplitData:
 
     def __init__(self):
 
-        self.folder_list = os.listdir(os.getcwd())
+        self.folder_list = os.listdir(os.path.join(os.getcwd(), 'features_to_use'))
         self.data_folders_dict = defaultdict(list)
         self.all_data_dict = defaultdict(dict)
 
@@ -32,9 +32,11 @@ class ImportSplitData:
             first_folder = True
             for folder in self.data_folders_dict[dataset]:
                 # get folder path
-                path = os.path.join(os.getcwd(), folder)
+                path = os.path.join(os.getcwd(), 'features_to_use', folder)
                 # iterate over all files in each dataset folder
                 for filename in os.listdir(path):
+                    if filename == '.DS_Store':
+                        continue
                     # connect all part of files of the same dataset
                     file_path = os.path.join(path, filename)
                     if first_folder:
@@ -61,7 +63,7 @@ class ImportSplitData:
             if dataset == 'train':
                 dataset_suffix = 'train'
             elif dataset == 'testi':
-                dataset_suffix = 'test'
+                dataset_suffix = 'testi'
             else:
                 dataset_suffix = 'valid'
             len_df = pd.DataFrame(data=self.all_data_dict[dataset]['branches_lengths_list_' + dataset_suffix],
