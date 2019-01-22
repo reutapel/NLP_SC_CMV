@@ -247,8 +247,8 @@ class DeltaModel(nn.Module):
         hidden_c = tr.randn(lstm_layers, batch_size, lstm_units)
 
         # if self.hparams.on_gpu:
-        #     hidden_h = hidden_h.cuda()
-        #     hidden_c = hidden_c.cuda()
+        # hidden_h = hidden_h.cuda()
+        # hidden_c = hidden_c.cuda()
         #TODO: why>>?
         # hidden_h = hidden_h
         # hidden_c = hidden_c
@@ -315,7 +315,7 @@ class DeltaModel(nn.Module):
         batch_size = batch_input.size(0)  # get size of batch
         sorted_length, sorted_idx = length.sort()  # sort the length of sequence samples
         reverse_idx = tr.linspace(batch_size - 1, 0, batch_size).long()
-        # reverse_idx = reverse_idx.cuda(GPU_ID)
+        # reverse_idx = reverse_idx.cuda()
 
         sorted_length = sorted_length[reverse_idx]  # for descending order
         sorted_idx = sorted_idx[reverse_idx]

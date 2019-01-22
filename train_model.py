@@ -112,6 +112,10 @@ class TrainModel:
         :return:
         """
 
+        tr.backends.cudnn.benchmark = True
+
+        self.model = self.model.cuda()
+
         self.model.train()
 
         # device = tr.device("cuda" if tr.cuda.is_available() else "cpu")
