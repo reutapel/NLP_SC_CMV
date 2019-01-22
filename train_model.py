@@ -308,13 +308,13 @@ def main():
 
         # load test data
         if 'testi' in all_data_dict.keys():
-            branch_comments_embedded_text_df_test = all_data_dict['testi']['branch_comments_embedded_text_df_test']
-            branch_comments_features_df_test = all_data_dict['testi']['branch_comments_features_df_test']
-            branch_comments_user_profiles_df_test = all_data_dict['testi']['branch_comments_user_profiles_df_test']
-            branch_submission_dict_test = all_data_dict['testi']['branch_submission_dict_test']
-            submission_data_dict_test = all_data_dict['testi']['submission_data_dict_test']
-            branch_deltas_data_dict_test = all_data_dict['testi']['branch_deltas_data_dict_test']
-            branches_lengths_list_test = all_data_dict['testi']['branches_lengths_list_test']
+            branch_comments_embedded_text_df_test = all_data_dict['testi']['branch_comments_embedded_text_df_testi']
+            branch_comments_features_df_test = all_data_dict['testi']['branch_comments_features_df_testi']
+            branch_comments_user_profiles_df_test = all_data_dict['testi']['branch_comments_user_profiles_df_testi']
+            branch_submission_dict_test = all_data_dict['testi']['branch_submission_dict_testi']
+            submission_data_dict_test = all_data_dict['testi']['submission_data_dict_testi']
+            branch_deltas_data_dict_test = all_data_dict['testi']['branch_deltas_data_dict_testi']
+            branches_lengths_list_test = all_data_dict['testi']['branches_lengths_list_testi']
             len_df_test = all_data_dict['testi']['len_df']
 
         # load valid data
