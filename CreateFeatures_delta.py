@@ -28,8 +28,6 @@ import ray
 
 
 base_directory = os.getenv('PWD')
-print(base_directory)
-# base_directory = os.path.join(base_directory, 'to_server')
 data_directory = os.path.join(base_directory, 'data')
 trained_models_directory = os.path.join(base_directory, 'trained_models')
 save_data_directory = os.path.join(data_directory, 'filter_submissions')
@@ -46,7 +44,7 @@ lemma = WordNetLemmatizer()
 sid = SentimentIntensityAnalyzer()
 
 max_branch_length_dict = {
-    'train': 38,  # 108
+    'train': 108,
     'testi': 102,
     'valid': 106,
 }

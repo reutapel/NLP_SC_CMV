@@ -112,9 +112,9 @@ class TrainModel:
         :return:
         """
 
-        tr.backends.cudnn.benchmark = True
+        # tr.backends.cudnn.benchmark = True
 
-        self.model = self.model.cuda()
+        # self.model = self.model.cuda()
 
         self.model.train()
 
