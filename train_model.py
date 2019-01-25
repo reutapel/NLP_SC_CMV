@@ -16,6 +16,7 @@ from pylab import savefig
 from matplotlib.ticker import MaxNLocator
 import os
 import numbers
+import sys
 
 # old_stdout = sys.stdout
 # log_file = open("train_model.log", "w")
@@ -32,7 +33,7 @@ class TrainModel:
     def __init__(self, train_data, test_data, learning_rate, criterion, batch_size, num_epochs, num_labels, fc1, fc2,
                  init_lstm_text, init_lstm_comments, init_lstm_users, init_conv_text, init_conv_sub_features,
                  init_conv_sub_profile_features, input_size_text_sub, input_size_sub_features,
-                 input_size_sub_profile_features, fc1_droput, fc2_dropout):
+                 input_size_sub_profile_features, fc1_droput, fc2_dropout, is_cuda):
         """
 
         :param train_data: all data elements of train
@@ -55,18 +56,20 @@ class TrainModel:
         :param input_size_sub_profile_features: size of submitter feature vector
         :param fc1_droput: probability for first dropout
         :param fc2_dropout: probability for second dropout
+        :param bool is_cuda: if running with cuda or not
         """
 
         self.learning_rate = learning_rate
         self.num_epochs = num_epochs
         self.batch_size = batch_size
         self.criterion = criterion
+        self.is_cuda = is_cuda
 
         # create model
         self.model = DeltaModel(init_lstm_text, init_lstm_comments, init_lstm_users, init_conv_text,
                                 init_conv_sub_features, init_conv_sub_profile_features, input_size_text_sub,
                                 input_size_sub_features, input_size_sub_profile_features, self.batch_size, num_labels,
-                                fc1, fc2, fc1_droput, fc2_dropout)
+                                fc1, fc2, fc1_droput, fc2_dropout, is_cuda)
 
         # on the model.parameters will be performed the update by stochastic gradient descent
         self.optimizer = tr.optim.Adam(self.model.parameters(), lr=learning_rate)
@@ -112,9 +115,11 @@ class TrainModel:
         :return:
         """
 
-        # tr.backends.cudnn.benchmark = True
+        if self.is_cuda:
+            tr.backends.cudnn.benchmark = True
 
-        # self.model = self.model.cuda()
+            self.model = self.model.cuda()
+            print('run cuda')
 
         self.model.train()
 
@@ -128,6 +133,10 @@ class TrainModel:
             total = 0
             train_labels = tr.Tensor()
             train_predictions = tr.Tensor()
+            if self.is_cuda:
+                train_labels = train_labels.cuda()
+                train_predictions = train_predictions.cuda()
+
             first_batch = True
             for i, (data_points, labels) in tqdm(enumerate(self.train_loader), desc='batch'):
 
@@ -139,6 +148,8 @@ class TrainModel:
 
                 # sort labels
                 labels = labels[sorted_idx].view(batch_size, -1).float()
+                if self.is_cuda:
+                    labels = labels.cuda()
 
                 # calculate for measurements
                 predicted = ((outputs > 0.5) * 1).float()
@@ -286,7 +297,7 @@ def replace_0_with_list(df, len_list_in_cell):
     return df
 
 
-def main():
+def main(is_cuda):
 
     debug = 0
 
@@ -373,7 +384,7 @@ def main():
     criterion = nn.BCEWithLogitsLoss()
     learning_rate = 0.001 # range 0.0003-0.001 batch grows -> lr grows
     batch_size = 24  # TRY BATCH SIZE 100
-    num_epochs = 2
+    num_epochs = 100
     num_labels = 2
     fc1 = 32
     fc2 = 16
@@ -381,11 +392,11 @@ def main():
     fc2_dropout = 0.5
 
     # define LSTM layers hyperparameters
-    init_lstm_text = InitLstm(input_size=len(branch_comments_embedded_text_df_train.iloc[0,0]), hidden_size=20,
+    init_lstm_text = InitLstm(input_size=len(branch_comments_embedded_text_df_train.iloc[0, 0]), hidden_size=20,
                               num_layers=2, batch_first=True)
-    init_lstm_comments = InitLstm(input_size=len(branch_comments_features_df_train.iloc[0,0]), hidden_size=10,
+    init_lstm_comments = InitLstm(input_size=len(branch_comments_features_df_train.iloc[0, 0]), hidden_size=10,
                                   num_layers=2, batch_first=True)
-    init_lstm_users = InitLstm(input_size=len(branch_comments_user_profiles_df_train.iloc[0,0]), hidden_size=10,
+    init_lstm_users = InitLstm(input_size=len(branch_comments_user_profiles_df_train.iloc[0, 0]), hidden_size=10,
                                num_layers=2, batch_first=True)
 
     # define conv layers hyperparameters
@@ -404,9 +415,9 @@ def main():
 
     # create training instance
     train_model = TrainModel(train_data, test_data, learning_rate, criterion, batch_size, num_epochs, num_labels, fc1,
-                             fc2,init_lstm_text, init_lstm_comments, init_lstm_users, init_conv_text,
+                             fc2, init_lstm_text, init_lstm_comments, init_lstm_users, init_conv_text,
                              init_conv_sub_features, init_conv_sub_profile_features, input_size_text_sub,
-                             input_size_sub_features, input_size_sub_profile_features, fc1_dropout, fc2_dropout)
+                             input_size_sub_features, input_size_sub_profile_features, fc1_dropout, fc2_dropout, is_cuda)
 
     # train and test model
     train_model.train()
@@ -418,5 +429,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
-
+    main_is_cuda = sys.argv[1]
+    print(f'running with cuda: {main_is_cuda}')
+    if main_is_cuda == 'False':
+        main_is_cuda = False
+    main(main_is_cuda)
