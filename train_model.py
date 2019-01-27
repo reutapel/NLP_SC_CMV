@@ -133,6 +133,7 @@ class TrainModel:
             total = 0
             train_labels = tr.Tensor()
             train_predictions = tr.Tensor()
+
             if self.is_cuda:
                 train_labels = train_labels.cuda()
                 train_predictions = train_predictions.cuda()
@@ -214,6 +215,11 @@ class TrainModel:
         total = 0
         test_labels = tr.Tensor()
         test_predictions = tr.Tensor()
+
+        if self.is_cuda:
+            test_labels = test_labels.cuda()
+            test_predictions = test_predictions.cuda()
+
         # make sure no gradients - memory efficiency - no allocation of tensors to the gradients
         with(tr.no_grad()):
 
@@ -223,6 +229,11 @@ class TrainModel:
                 outputs = outputs.view(batch_size, -1).float()
 
                 labels = labels[sorted_idx].view(batch_size, -1).float()
+
+                # TODO: check with Shimi why we need to put it
+                if self.is_cuda:
+                    outputs = outputs.cuda()
+                    labels = labels.cuda()
 
                 # calculate loss
                 loss = self.criterion(outputs, labels)
@@ -247,6 +258,10 @@ class TrainModel:
 
     def calc_measurements(self, correct, total, labels, pred, epoch, dataset):
 
+        if self.is_cuda:
+            labels = labels.cpu()
+            pred = pred.cpu()
+
         labels = labels.detach().numpy()
         pred = pred.detach().numpy()
         print("calculate measurements on ", dataset)
@@ -268,8 +283,9 @@ class TrainModel:
     def plot_loss(self, epoch_count, train_loss, test_loss):
 
         # Visualize loss history
-        plt.plot(list(range(epoch_count)), train_loss, 'g--')
-        plt.plot(list(range(epoch_count)), test_loss, 'b-')
+        plt.plot(list(range(epoch_count)), train_loss, 'g--', label='train loss')
+        plt.plot(list(range(epoch_count)), test_loss, 'b-', label='test loss')
+        plt.legend()
         plt.title('Loss per epoch')
         plt.legend(['Training Loss', 'Test Loss'])
 
@@ -382,7 +398,7 @@ def main(is_cuda):
     # define hyper parameters of learning phase
     # log makes differences expand to higher numbers because of it's behaivor between 0 to 1
     criterion = nn.BCEWithLogitsLoss()
-    learning_rate = 0.001 # range 0.0003-0.001 batch grows -> lr grows
+    learning_rate = 0.001  # range 0.0003-0.001 batch grows -> lr grows
     batch_size = 24  # TRY BATCH SIZE 100
     num_epochs = 100
     num_labels = 2
