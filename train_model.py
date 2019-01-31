@@ -112,9 +112,9 @@ class TrainModel:
         :return:
         """
 
-        tr.backends.cudnn.benchmark = True
-
-        self.model = self.model.cuda()
+        # tr.backends.cudnn.benchmark = True
+        #
+        # self.model = self.model.cuda()
 
         self.model.train()
 
@@ -180,7 +180,7 @@ class TrainModel:
             # average batch losses per epoch
             self.train_loss_list[epoch] = self.train_loss_list[epoch]/(i+1)
             # calculate measurements on train data
-            self.calc_measurements(correct, total, train_labels, train_predictions, epoch,  "train")
+            self.calc_measurements(correct, total, train_labels, train_predictions, outputs, epoch,  "train")
             self.test(epoch)
             self.model.train()
 
@@ -232,16 +232,16 @@ class TrainModel:
         self.test_loss_list[epoch] = self.test_loss_list[epoch] / (i + 1)
 
         # calculate measurements on test data
-        self.calc_measurements(correct, total, test_labels, test_predictions, epoch, "test")
+        self.calc_measurements(correct, total, test_labels, test_predictions, outputs, epoch, "test")
 
-    def calc_measurements(self, correct, total, labels, pred, epoch, dataset):
+    def calc_measurements(self, correct, total, labels, pred, outputs, epoch, dataset):
 
         labels = labels.detach().numpy()
         pred = pred.detach().numpy()
         print("calculate measurements on ", dataset)
         accuracy = float(correct) / float(total)
         print('Accuracy: ', accuracy)
-        fpr, tpr, thresholds = metrics.roc_curve(labels, pred,
+        fpr, tpr, thresholds = metrics.roc_curve(labels, outputs,
                                                  pos_label=1)
         auc = metrics.auc(fpr, tpr)
         print("AUC: ", auc)
