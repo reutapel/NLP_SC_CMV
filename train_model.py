@@ -280,29 +280,47 @@ class TrainModel:
 
         self.measurements_dict[dataset][epoch] = [accuracy, auc, precision, recall]
 
-    def plot_loss(self, epoch_count, train_loss, test_loss):
+    def plot_graph(self, epoch_count, train_loss, test_loss, measurement):
 
-        # Visualize loss history
-        plt.plot(list(range(epoch_count)), train_loss, 'g--', label='train loss')
-        plt.plot(list(range(epoch_count)), test_loss, 'b-', label='test loss')
+        # Visualize history
+        plt.plot(list(range(epoch_count)), train_loss, 'g--', label='train')
+        plt.plot(list(range(epoch_count)), test_loss, 'b-', label='test')
         plt.legend()
-        plt.title('Loss per epoch')
-        plt.legend(['Training Loss', 'Test Loss'])
+        plt.title(measurement, ' per epoch')
+        plt.legend(['Train', 'Test'])
 
         # set ticks as int
         plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
 
         # handle axis labels
         plt.xlabel('Epoch', fontsize=12)
-        plt.ylabel('Loss', fontsize=12, rotation='horizontal', verticalalignment='bottom')
+        plt.ylabel(measurement, fontsize=12, rotation='horizontal', verticalalignment='bottom')
         plt.gca().yaxis.set_label_coords(0, 1.01)
-        # plt.gca().xaxis.set_label_coords(0.5, -0.02)
 
         for i in ['top', 'right']:
             plt.gca().spines[i].set_visible(False)
         plt.legend(loc='upper right', bbox_to_anchor=(1.2, 1.05), ncol=1, frameon=True)
 
-        savefig('loss_graph.png')
+        savefig(measurement+'_graph.png')
+
+    def plot_measurements(self, measurments_list=("accuracy", "auc", "precision", "recall")):
+
+        measurements_dataset_df_dict = dict()
+
+        for dataset in self.measurements_dict.keys():
+            measurements_dataset_df_dict[dataset] = pd.DataFrame.from_dict(self.measurements_dict[dataset],
+                                                                           orient='index')
+            measurements_dataset_df_dict[dataset].columns = measurments_list
+            joblib.dump(measurements_dataset_df_dict[dataset], dataset + '_measurements_dataset_df_dict.pkl')
+
+        for meas in measurments_list:
+            for key in measurements_dataset_df_dict.keys():
+                if key == 'train':
+                    train_list = measurements_dataset_df_dict[key][meas].tolist()
+                elif key == 'test':
+                    test_list = measurements_dataset_df_dict[key][meas].tolist()
+            self.plot_graph(self.num_epochs, train_list, test_list, meas)
+        return
 
 
 def replace_0_with_list(df, len_list_in_cell):
@@ -315,7 +333,7 @@ def replace_0_with_list(df, len_list_in_cell):
 
 def main(is_cuda):
 
-    debug = 0
+    debug = 1
 
     import_split_data_obj = ImportSplitData()
     all_data_dict = import_split_data_obj.sort_joined_data()
@@ -400,7 +418,7 @@ def main(is_cuda):
     criterion = nn.BCEWithLogitsLoss()
     learning_rate = 0.001  # range 0.0003-0.001 batch grows -> lr grows
     batch_size = 24  # TRY BATCH SIZE 100
-    num_epochs = 100
+    num_epochs = 2
     num_labels = 2
     fc1 = 32
     fc2 = 16
@@ -438,8 +456,11 @@ def main(is_cuda):
     # train and test model
     train_model.train()
     joblib.dump(train_model.measurements_dict, "measurements_dict.pkl")
-    train_model.plot_loss(train_model.num_epochs, train_model.train_loss_list, train_model.test_loss_list)
-    #
+
+    measurments_list = ["accuracy", "auc", "precision", "recall"]
+    train_model.plot_graph(train_model.num_epochs, train_model.train_loss_list, train_model.test_loss_list, 'loss')
+    train_model.plot_measurements(measurments_list)
+
     # sys.stdout = old_stdout
     # log_file.close()
 

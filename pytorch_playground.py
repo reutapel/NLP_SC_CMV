@@ -1,29 +1,20 @@
 import joblib
-import torch as tr
-
-branch_comments_embedded_text_df_train3 = joblib.load('C:\\Users\\ssheiba\\Desktop\\MASTER\\NLP_SC_CMV\\features_to_use\\train3\\branch_comments_embedded_text_df_train.pkl')
-branch_comments_embedded_text_df_train0 = joblib.load('C:\\Users\\ssheiba\\Desktop\\MASTER\\NLP_SC_CMV\\features_to_use\\train0\\branch_comments_embedded_text_df_train.pkl')
-
-branch_comments_features_df_train0 = joblib.load('C:\\Users\\ssheiba\\Desktop\\MASTER\\NLP_SC_CMV\\features_to_use\\train0\\branch_comments_features_df_train.pkl')
-branch_comments_user_profiles_df_train0 = joblib.load('C:\\Users\\ssheiba\\Desktop\\MASTER\\NLP_SC_CMV\\features_to_use\\train0\\branch_comments_user_profiles_df_train.pkl')
-
-branch_comments_features_df_train3 = joblib.load('C:\\Users\\ssheiba\\Desktop\\MASTER\\NLP_SC_CMV\\features_to_use\\train3\\branch_comments_features_df_train.pkl')
-branch_comments_user_profiles_df_train3 = joblib.load('C:\\Users\\ssheiba\\Desktop\\MASTER\\NLP_SC_CMV\\features_to_use\\train3\\branch_comments_user_profiles_df_train.pkl')
+import pandas as pd
 
 
-# branches_lengths_list_train = joblib.load('C:\\Users\\ssheiba\\Desktop\\MASTER\\NLP_SC_CMV\\train1\\branches_lengths_list_train.txt')
+measurements_dict = joblib.load("measurements_dict.pkl")
 
-print('check')
+print("hi")
 
-for row in branch_comments_embedded_text_df_train.values:
-    row_i = 0
-    for column in row:
-        col = 0
-        try:
-            tensor = tr.Tensor([column])
-        except:
-            print(column)
-            print("row is: ", row_i)
-            print("col is: ", col)
-        col +=1
-    row_i+=1
+def plot_measurements(self, measurments_list=["accuracy", "auc", "precision", "recall"]):
+    measurements_dataset_df_dict = dict()
+    for dataset in self.measurements_dict.keys():
+        measurements_dataset_df_dict[dataset] = pd.DataFrame.from_dict(self.measurements_dict[dataset], orient='index')
+        measurements_dataset_df_dict[dataset].columns = measurments_list
+        joblib.dump(measurements_dataset_df_dict[dataset], dataset+'_measurements_dataset_df_dict.pkl')
+
+    for meas in measurments_list:
+        train_list = measurements_dataset_df_dict['train'][meas].tolist()
+        test_list = measurements_dataset_df_dict['test'][meas].tolist()
+        self.plot_graph(self.num_epochs, train_list, test_list, meas)
+    return
