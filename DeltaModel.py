@@ -13,7 +13,7 @@ class DeltaModel(nn.Module):
     def __init__(self, init_lstm_text, init_lstm_comments, init_lstm_users, init_conv1d_text, init_conv1d_sub_features,
                  init_conv1d_sub_profile_features, input_size_text_sub, input_size_sub_features,
                  input_size_sub_profile_features, batch_size, num_labels, first_linear_reduction,
-                 second_linear_reduction, fc1_dropout, fc2_dropout):
+                 second_linear_reduction, fc1_dropout, fc2_dropout, is_cuda):
         """
         :param init_lstm_text: embedded text LSTM hyper parameters
         :param init_lstm_comments: comment features LSTM hyper parameters
@@ -30,6 +30,7 @@ class DeltaModel(nn.Module):
         :param second_linear_reduction: linear size from first_linear_size output to this size
         :param fc1_dropout: dropout probability before first linear layer
         :param fc2_dropout: dropout probability before second linear layer
+        :param bool is_cuda: if we use cuda
         """
         super(DeltaModel, self).__init__()
         # check if gpu is available
@@ -38,6 +39,7 @@ class DeltaModel(nn.Module):
         self.init_lstm_text = init_lstm_text
         self.init_lstm_comments = init_lstm_comments
         self.init_lstm_users = init_lstm_users
+        self.is_cuda = is_cuda
 
         # # initialize LSTM's hidden states
         # self.hidden_text = self.init_hidden(self.init_lstm_text.num_layers, batch_size,
@@ -140,11 +142,11 @@ class DeltaModel(nn.Module):
     def create_conv1d_layer(self, in_channels, out_channels, kernel_size, stride, padding):
         """
         initialize conv1d layer with given argumnets
-        in_channels: number of channels in the input
-        out_channels: number of channels produced by the convolution (number of filters / kernels)
-        kernel_size: sliding window dimension
-        stride: step size of kernel
-        padding: zero padding added to both sides of the input
+        :param in_channels: number of channels in the input
+        :param out_channels: number of channels produced by the convolution (number of filters / kernels)
+        :param kernel_size: sliding window dimension
+        :param stride: step size of kernel
+        :param padding: zero padding added to both sides of the input
         :return: conv1d layer
         """
         conv1d_layer = nn.Conv1d(in_channels, out_channels, kernel_size, stride=stride, padding=padding)
@@ -214,9 +216,12 @@ class DeltaModel(nn.Module):
         # concatenate all LSTMs and convolutions outputs as input for final linear and softmax layer
         # if last batch holds one data point
         if out_sub_text.shape[0] == 1:
+            # branch_hidden_rep = tr.cat(
+            #     (out_lstm_text, out_sub_text.view(-1), out_lstm_comments, out_sub_features.view(-1), out_lstm_users,
+            #      out_sub_user.view(-1)))
             branch_hidden_rep = tr.cat(
-                (out_lstm_text, out_sub_text.view(-1), out_lstm_comments, out_sub_features.view(-1), out_lstm_users,
-                 out_sub_user.view(-1)))
+                (out_lstm_text.view(-1), out_sub_text.view(-1), out_lstm_comments.view(-1), out_sub_features.view(-1),
+                 out_lstm_users.view(-1), out_sub_user.view(-1)))
         else:
             branch_hidden_rep = tr.cat((out_lstm_text, out_sub_text, out_lstm_comments, out_sub_features, out_lstm_users,
                                     out_sub_user), 1)
@@ -247,9 +252,10 @@ class DeltaModel(nn.Module):
         hidden_c = tr.randn(lstm_layers, batch_size, lstm_units)
 
         # if self.hparams.on_gpu:
-        # hidden_h = hidden_h.cuda()
-        # hidden_c = hidden_c.cuda()
-        #TODO: why>>?
+        if self.is_cuda:
+            hidden_h = hidden_h.cuda()
+            hidden_c = hidden_c.cuda()
+        # TODO: why>>?
         # hidden_h = hidden_h
         # hidden_c = hidden_c
 
@@ -320,6 +326,12 @@ class DeltaModel(nn.Module):
         sorted_length = sorted_length[reverse_idx]  # for descending order
         sorted_idx = sorted_idx[reverse_idx]
         sorted_data = batch_input[sorted_idx]  # sorted in descending order
+
+        # if self.hparams.on_gpu:
+        if self.is_cuda:
+            sorted_length = sorted_length.cuda()
+            sorted_idx = sorted_idx.cuda()
+            sorted_data = sorted_data.cuda()
 
         return sorted_data, sorted_length, sorted_idx
 
