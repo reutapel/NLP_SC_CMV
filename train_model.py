@@ -64,6 +64,7 @@ class TrainModel:
         self.batch_size = batch_size
         self.criterion = criterion
         self.is_cuda = is_cuda
+        self.sigmoid = nn.Sigmoid()
 
         # create model
         self.model = DeltaModel(init_lstm_text, init_lstm_comments, init_lstm_users, init_conv_text,
@@ -133,10 +134,12 @@ class TrainModel:
             total = 0
             train_labels = tr.Tensor()
             train_predictions = tr.Tensor()
+            train_outputs = tr.Tensor()
 
             if self.is_cuda:
                 train_labels = train_labels.cuda()
                 train_predictions = train_predictions.cuda()
+                train_outputs = train_outputs.cuda()
 
             first_batch = True
             for i, (data_points, labels) in tqdm(enumerate(self.train_loader), desc='batch'):
@@ -144,7 +147,8 @@ class TrainModel:
                 # forward
                 outputs, sorted_idx, batch_size = self.model(data_points)
                 # TODO: understand impact of packed padded to loss, like function loss in model.py
-
+                # turn to probability of class 1
+                outputs = self.sigmoid(outputs)[0]
                 outputs = outputs.view(batch_size, -1).float()
 
                 # sort labels
@@ -158,6 +162,7 @@ class TrainModel:
                 correct += (predicted == labels).sum()
                 train_labels = tr.cat((train_labels, labels))
                 train_predictions = tr.cat((train_predictions, predicted))
+                train_outputs = tr.cat((train_outputs, outputs))
 
                 # calculate loss
                 # print("calc loss")
@@ -192,7 +197,7 @@ class TrainModel:
             # average batch losses per epoch
             self.train_loss_list[epoch] = self.train_loss_list[epoch]/(i+1)
             # calculate measurements on train data
-            self.calc_measurements(correct, total, train_labels, train_predictions, outputs, epoch,  "train")
+            self.calc_measurements(correct, total, train_labels, train_predictions, train_outputs, epoch,  "train")
             self.test(epoch)
             self.model.train()
 
@@ -215,10 +220,12 @@ class TrainModel:
         total = 0
         test_labels = tr.Tensor()
         test_predictions = tr.Tensor()
+        test_outputs = tr.Tensor()
 
         if self.is_cuda:
             test_labels = test_labels.cuda()
             test_predictions = test_predictions.cuda()
+            test_outputs = test_outputs.cuda()
 
         # make sure no gradients - memory efficiency - no allocation of tensors to the gradients
         with(tr.no_grad()):
@@ -226,6 +233,10 @@ class TrainModel:
             for i, (data_points, labels) in tqdm(enumerate(self.test_loader), desc='batch'):
 
                 outputs, sorted_idx, batch_size = self.model(data_points)
+
+                # turn to probability of class 1
+                outputs = self.sigmoid(outputs)[0]
+
                 outputs = outputs.view(batch_size, -1).float()
 
                 labels = labels[sorted_idx].view(batch_size, -1).float()
@@ -250,11 +261,12 @@ class TrainModel:
                 test_labels = tr.cat((test_labels, labels))
                 # TODO: think why it was with outputs: test_predictions = tr.cat((test_predictions, outputs))
                 test_predictions = tr.cat((test_predictions, predicted))
+                test_outputs = tr.cat((test_outputs, outputs))
 
         self.test_loss_list[epoch] = self.test_loss_list[epoch] / (i + 1)
 
         # calculate measurements on test data
-        self.calc_measurements(correct, total, test_labels, test_predictions, outputs, epoch, "test")
+        self.calc_measurements(correct, total, test_labels, test_predictions, test_outputs, epoch, "test")
 
     def calc_measurements(self, correct, total, labels, pred, outputs, epoch, dataset):
 
