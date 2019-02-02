@@ -148,7 +148,7 @@ class TrainModel:
                 outputs, sorted_idx, batch_size = self.model(data_points)
                 # TODO: understand impact of packed padded to loss, like function loss in model.py
                 # turn to probability of class 1
-                outputs = self.sigmoid(outputs)[0]
+                outputs = self.sigmoid(outputs)
                 outputs = outputs.view(batch_size, -1).float()
 
                 # sort labels
@@ -235,8 +235,7 @@ class TrainModel:
                 outputs, sorted_idx, batch_size = self.model(data_points)
 
                 # turn to probability of class 1
-                outputs = self.sigmoid(outputs)[0]
-
+                outputs = self.sigmoid(outputs)
                 outputs = outputs.view(batch_size, -1).float()
 
                 labels = labels[sorted_idx].view(batch_size, -1).float()
@@ -273,9 +272,11 @@ class TrainModel:
         if self.is_cuda:
             labels = labels.cpu()
             pred = pred.cpu()
+            outputs = outputs.cpu()
 
         labels = labels.detach().numpy()
         pred = pred.detach().numpy()
+        outputs = outputs.detach().numpy()
         print("calculate measurements on ", dataset)
         accuracy = float(correct) / float(total)
         print('Accuracy: ', accuracy)
@@ -298,7 +299,7 @@ class TrainModel:
         plt.plot(list(range(epoch_count)), train_loss, 'g--', label='train')
         plt.plot(list(range(epoch_count)), test_loss, 'b-', label='test')
         plt.legend()
-        plt.title(measurement, ' per epoch')
+        plt.title(measurement + ' per epoch')
         plt.legend(['Train', 'Test'])
 
         # set ticks as int
@@ -311,7 +312,8 @@ class TrainModel:
 
         for i in ['top', 'right']:
             plt.gca().spines[i].set_visible(False)
-        plt.legend(loc='upper right', bbox_to_anchor=(1.2, 1.05), ncol=1, frameon=True)
+        plt.legend(loc='upper right', ncol=1, frameon=True)  # bbox_to_anchor=(1.2, 1.05)
+        # plt.legend(loc=2, bbox_to_anchor=(0.5, -0.15), ncol=1, frameon=True)
 
         savefig(measurement+'_graph.png')
 
