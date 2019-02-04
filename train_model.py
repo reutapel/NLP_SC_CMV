@@ -298,9 +298,10 @@ class TrainModel:
     def plot_graph(self, epoch_count, train_loss, test_loss, measurement):
 
         # Visualize history
-        plt.plot(list(range(epoch_count)), train_loss, 'g--', label='train')
-        plt.plot(list(range(epoch_count)), test_loss, 'b-', label='test')
-        plt.legend()
+        fig, ax = plt.subplots()
+        ax.plot(list(range(epoch_count)), train_loss, 'g--', label='train')
+        ax.plot(list(range(epoch_count)), test_loss, 'b-', label='test')
+        ax.legend()
         plt.title(measurement + ' per epoch')
         plt.legend(['Train', 'Test'])
 
@@ -314,10 +315,11 @@ class TrainModel:
 
         for i in ['top', 'right']:
             plt.gca().spines[i].set_visible(False)
-        plt.legend(loc='upper right', ncol=1, frameon=True)  # bbox_to_anchor=(1.2, 1.05)
+        plt.legend(loc='upper right', bbox_to_anchor=(1.15, 1.05), ncol=1, frameon=True)  # bbox_to_anchor=(1.2, 1.05)
         # plt.legend(loc=2, bbox_to_anchor=(0.5, -0.15), ncol=1, frameon=True)
 
-        savefig(measurement+'_graph.png')
+        fig_to_save = fig
+        fig_to_save.savefig(measurement+'_graph.png')
 
     def plot_measurements(self, measurments_list=("accuracy", "auc", "precision", "recall")):
 
