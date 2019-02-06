@@ -13,7 +13,6 @@ class CustomDataset(dt.Dataset):
     """
     Class for handling data before modeling, pre-process and loading
     """
-    # TODO: REUT: df columns should be com1, com2 ... important for tensor ordering
     def __init__(self, branch_comments_embedded_text_df, branch_comments_features_df, branch_comments_user_profiles_df,
                  branch_submission_dict, submission_data_dict, branch_deltas_data_dict, branches_lengths_list, len_df):
         """

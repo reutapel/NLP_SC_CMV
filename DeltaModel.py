@@ -124,7 +124,7 @@ class DeltaModel(nn.Module):
 
     def create_lstm_layer(self, input_size, hidden_size, num_layers, batch_first):
         """
-        initialize LSTM layer with given argumnets
+        initialize LSTM layer with given arguments
         input_size: embedding dimension or feature vector dimension
         hidden_size: The number of features in the hidden state `h`
         num_layers: number of lstm layers
@@ -141,7 +141,7 @@ class DeltaModel(nn.Module):
 
     def create_conv1d_layer(self, in_channels, out_channels, kernel_size, stride, padding):
         """
-        initialize conv1d layer with given argumnets
+        initialize conv1d layer with given arguments
         :param in_channels: number of channels in the input
         :param out_channels: number of channels produced by the convolution (number of filters / kernels)
         :param kernel_size: sliding window dimension

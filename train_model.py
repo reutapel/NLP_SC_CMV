@@ -17,6 +17,7 @@ from matplotlib.ticker import MaxNLocator
 import os
 import numbers
 import sys
+from datetime import datetime
 
 # old_stdout = sys.stdout
 # log_file = open("train_model.log", "w")
@@ -33,7 +34,7 @@ class TrainModel:
     def __init__(self, train_data, test_data, learning_rate, criterion, batch_size, num_epochs, num_labels, fc1, fc2,
                  init_lstm_text, init_lstm_comments, init_lstm_users, init_conv_text, init_conv_sub_features,
                  init_conv_sub_profile_features, input_size_text_sub, input_size_sub_features,
-                 input_size_sub_profile_features, fc1_droput, fc2_dropout, is_cuda):
+                 input_size_sub_profile_features, fc1_droput, fc2_dropout, is_cuda, curr_model_outputs_dir):
         """
 
         :param train_data: all data elements of train
@@ -57,6 +58,7 @@ class TrainModel:
         :param fc1_droput: probability for first dropout
         :param fc2_dropout: probability for second dropout
         :param bool is_cuda: if running with cuda or not
+        :param curr_model_outputs_dir: the directory to save the model's output
         """
 
         self.learning_rate = learning_rate
@@ -65,6 +67,7 @@ class TrainModel:
         self.criterion = criterion
         self.is_cuda = is_cuda
         self.sigmoid = nn.Sigmoid()
+        self.curr_model_outputs_dir = curr_model_outputs_dir
 
         # create model
         self.model = DeltaModel(init_lstm_text, init_lstm_comments, init_lstm_users, init_conv_text,
@@ -159,7 +162,7 @@ class TrainModel:
                     outputs = outputs.cuda()
 
                 # calculate for measurements
-                predicted = ((outputs > 0.5) * 1).float()
+                predicted = ((probabilities > 0.5) * 1).float()
                 total += labels.size(0)
                 correct += (predicted == labels).sum()
                 train_labels = tr.cat((train_labels, labels))
@@ -168,6 +171,10 @@ class TrainModel:
 
                 # calculate loss
                 # print("calc loss")
+                # pos_weight = tr.Tensor([(labels.sum() / (labels == 0).sum()).item(),
+                #                         ((labels == 0).sum() / labels.sum()).item()])
+                # criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+                # loss = criterion(outputs, labels)
                 loss = self.criterion(outputs, labels)
                 # if want graph per epoch
                 if first_batch:
@@ -204,7 +211,7 @@ class TrainModel:
             self.model.train()
 
         # save the model
-        tr.save(self.model.state_dict(), 'model.pkl')
+        tr.save(self.model.state_dict(), os.path.join(self.curr_model_outputs_dir, 'model.pkl'))
 
     def test(self, epoch):
         """
@@ -242,22 +249,25 @@ class TrainModel:
 
                 labels = labels[sorted_idx].view(batch_size, -1).float()
 
-                # TODO: check with Shimi why we need to put it
                 if self.is_cuda:
                     outputs = outputs.cuda()
                     labels = labels.cuda()
                     probabilities = probabilities.cuda()
 
                 # calculate loss
+                # pos_weight = tr.Tensor([((labels == 0).sum() / labels.sum()).item(),
+                #                         (labels.sum() / (labels == 0).sum()).item()])
+                # criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+                # loss = criterion(outputs, labels)
                 loss = self.criterion(outputs, labels)
                 # if want graph per epoch
                 if first_batch:
                     first_batch = False
-                    self.test_loss_list.append(loss.data[0].item())
+                    self.test_loss_list.append(loss.item())
                 else:
-                    self.test_loss_list[epoch] += loss.data[0].item()
+                    self.test_loss_list[epoch] += loss.item()
 
-                predicted = (outputs > 0.5).float() * 1
+                predicted = (probabilities > 0.5).float() * 1
                 total += labels.size(0)
                 correct += (predicted == labels).sum()
                 test_labels = tr.cat((test_labels, labels))
@@ -293,7 +303,10 @@ class TrainModel:
         recall = metrics.recall_score(labels, pred)
         print("recall: ", recall)
 
-        self.measurements_dict[dataset][epoch] = [accuracy, auc, precision, recall]
+        macro_f_score = metrics.f1_score(labels, pred, average='macro')
+        print("macro_f_score: ", macro_f_score)
+
+        self.measurements_dict[dataset][epoch] = [accuracy, auc, precision, recall, macro_f_score]
 
     def plot_graph(self, epoch_count, train_loss, test_loss, measurement):
 
@@ -319,9 +332,9 @@ class TrainModel:
         # plt.legend(loc=2, bbox_to_anchor=(0.5, -0.15), ncol=1, frameon=True)
 
         fig_to_save = fig
-        fig_to_save.savefig(measurement+'_graph.png')
+        fig_to_save.savefig(os.path.join(self.curr_model_outputs_dir, measurement+'_graph.png'))
 
-    def plot_measurements(self, measurments_list=("accuracy", "auc", "precision", "recall")):
+    def plot_measurements(self, measurments_list=("accuracy", "auc", "precision", "recall", "macro_f_score")):
 
         measurements_dataset_df_dict = dict()
 
@@ -329,7 +342,8 @@ class TrainModel:
             measurements_dataset_df_dict[dataset] = pd.DataFrame.from_dict(self.measurements_dict[dataset],
                                                                            orient='index')
             measurements_dataset_df_dict[dataset].columns = measurments_list
-            joblib.dump(measurements_dataset_df_dict[dataset], dataset + '_measurements_dataset_df_dict.pkl')
+            joblib.dump(measurements_dataset_df_dict[dataset], os.path.join(self.curr_model_outputs_dir, dataset +
+                                                                            '_measurements_dataset_df_dict.pkl'))
 
         for meas in measurments_list:
             for key in measurements_dataset_df_dict.keys():
@@ -443,6 +457,13 @@ def main(is_cuda):
     fc1_dropout = 0.2
     fc2_dropout = 0.5
 
+    base_directory = os.getenv('PWD')
+    curr_model_outputs_dir = os.path.join(base_directory, 'model_outputs', datetime.now().strftime(
+        f'%d_%m_%Y_%H_%M_LR_{learning_rate}_batch_size_{batch_size}_num_epochs_{num_epochs}_fc1_dropout_{fc1_dropout}_'
+        f'fc2_dropout_{fc2_dropout}'))
+    if not os.path.exists(curr_model_outputs_dir):
+        os.makedirs(curr_model_outputs_dir)
+
     # define LSTM layers hyperparameters
     init_lstm_text = InitLstm(input_size=len(branch_comments_embedded_text_df_train.iloc[0, 0]), hidden_size=20,
                               num_layers=2, batch_first=True)
@@ -469,13 +490,14 @@ def main(is_cuda):
     train_model = TrainModel(train_data, test_data, learning_rate, criterion, batch_size, num_epochs, num_labels, fc1,
                              fc2, init_lstm_text, init_lstm_comments, init_lstm_users, init_conv_text,
                              init_conv_sub_features, init_conv_sub_profile_features, input_size_text_sub,
-                             input_size_sub_features, input_size_sub_profile_features, fc1_dropout, fc2_dropout, is_cuda)
+                             input_size_sub_features, input_size_sub_profile_features, fc1_dropout, fc2_dropout,
+                             is_cuda, curr_model_outputs_dir)
 
     # train and test model
     train_model.train()
-    joblib.dump(train_model.measurements_dict, "measurements_dict.pkl")
+    joblib.dump(train_model.measurements_dict, os.path.join(curr_model_outputs_dir, 'measurements_dict.pkl'))
 
-    measurments_list = ["accuracy", "auc", "precision", "recall"]
+    measurments_list = ["accuracy", "auc", "precision", "recall", 'macro_f_score']
     train_model.plot_graph(train_model.num_epochs, train_model.train_loss_list, train_model.test_loss_list, 'loss')
     train_model.plot_measurements(measurments_list)
 
