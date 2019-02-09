@@ -176,7 +176,7 @@ class TrainModel:
 
                 pos_weight = tr.where(labels == 0, (labels == 0).float()*pos_weight_no_delta,
                                       (labels == 1).float()*pos_weight_delta)
-                criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+                criterion = nn.BCEWithLogitsLoss(weight=pos_weight)
                 loss = criterion(outputs, labels)
 
                 # if bool(criterion(outputs, labels) != self.criterion(outputs, labels)):
@@ -266,7 +266,7 @@ class TrainModel:
 
                 pos_weight = tr.where(labels == 0, (labels == 0).float()*pos_weight_no_delta,
                                       (labels == 1).float()*pos_weight_delta)
-                criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+                criterion = nn.BCEWithLogitsLoss(weight=pos_weight)
                 loss = criterion(outputs, labels)
                 # loss = self.criterion(outputs, labels)
                 # if want graph per epoch
