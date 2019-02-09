@@ -171,11 +171,17 @@ class TrainModel:
 
                 # calculate loss
                 # print("calc loss")
-                # pos_weight = tr.Tensor([(labels.sum() / (labels == 0).sum()).item(),
-                #                         ((labels == 0).sum() / labels.sum()).item()])
-                # criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-                # loss = criterion(outputs, labels)
-                loss = self.criterion(outputs, labels)
+                pos_weight_delta = ((labels == 0).sum() / labels.sum()).item()
+                pos_weight_no_delta = (labels.sum() / (labels == 0).sum()).item()
+
+                pos_weight = tr.where(labels == 0, (labels == 0).float()*pos_weight_no_delta,
+                                      (labels == 1).float()*pos_weight_delta)
+                criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+                loss = criterion(outputs, labels)
+
+                # if bool(criterion(outputs, labels) != self.criterion(outputs, labels)):
+                #     print(f'not the same loss with and without pos_weight for epoch {epoch} and step {i}')
+                # loss = self.criterion(outputs, labels)
                 # if want graph per epoch
                 if first_batch:
                     first_batch = False
@@ -255,11 +261,14 @@ class TrainModel:
                     probabilities = probabilities.cuda()
 
                 # calculate loss
-                # pos_weight = tr.Tensor([((labels == 0).sum() / labels.sum()).item(),
-                #                         (labels.sum() / (labels == 0).sum()).item()])
-                # criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-                # loss = criterion(outputs, labels)
-                loss = self.criterion(outputs, labels)
+                pos_weight_delta = ((labels == 0).sum() / labels.sum()).item()
+                pos_weight_no_delta = (labels.sum() / (labels == 0).sum()).item()
+
+                pos_weight = tr.where(labels == 0, (labels == 0).float()*pos_weight_no_delta,
+                                      (labels == 1).float()*pos_weight_delta)
+                criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+                loss = criterion(outputs, labels)
+                # loss = self.criterion(outputs, labels)
                 # if want graph per epoch
                 if first_batch:
                     first_batch = False
@@ -450,7 +459,7 @@ def main(is_cuda):
     criterion = nn.BCEWithLogitsLoss()
     learning_rate = 0.001  # range 0.0003-0.001 batch grows -> lr grows
     batch_size = 24  # TRY BATCH SIZE 100
-    num_epochs = 2
+    num_epochs = 500
     num_labels = 2
     fc1 = 32
     fc2 = 16
@@ -497,6 +506,7 @@ def main(is_cuda):
     train_model.train()
     joblib.dump(train_model.measurements_dict, os.path.join(curr_model_outputs_dir, 'measurements_dict.pkl'))
 
+    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} plot graphs')
     measurments_list = ["accuracy", "auc", "precision", "recall", 'macro_f_score']
     train_model.plot_graph(train_model.num_epochs, train_model.train_loss_list, train_model.test_loss_list, 'loss')
     train_model.plot_measurements(measurments_list)
@@ -511,3 +521,4 @@ if __name__ == '__main__':
     if main_is_cuda == 'False':
         main_is_cuda = False
     main(main_is_cuda)
+    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} Done!')
