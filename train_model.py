@@ -498,13 +498,6 @@ def main(is_cuda):
     fc1_dropout = 0.2
     fc2_dropout = 0.5
 
-    base_directory = os.getenv('PWD')
-    curr_model_outputs_dir = os.path.join(base_directory, 'model_outputs', datetime.now().strftime(
-        f'%d_%m_%Y_%H_%M_LR_{learning_rate}_batch_size_{batch_size}_num_epochs_{num_epochs}_fc1_dropout_{fc1_dropout}_'
-        f'fc2_dropout_{fc2_dropout}'))
-    if not os.path.exists(curr_model_outputs_dir):
-        os.makedirs(curr_model_outputs_dir)
-
     # define LSTM layers hyperparameters
     init_lstm_text = InitLstm(input_size=len(branch_comments_embedded_text_df_train.iloc[0, 0]), hidden_size=20,
                               num_layers=2, batch_first=True)
