@@ -18,6 +18,8 @@ import os
 import numbers
 import sys
 from datetime import datetime
+import numpy as np
+import math
 
 # old_stdout = sys.stdout
 # log_file = open("train_model.log", "w")
@@ -25,6 +27,36 @@ from datetime import datetime
 
 
 # TODO: F.mse_loss(size_average, reduce) : parameters that affect if we get average values per batch : sum or average
+
+
+def create_class_weight(labels: tr.Tensor, mu=None):
+    """
+    This function create weight tensor for loss function
+    :param labels: tensor with the labels of the batch
+    :param mu: parameter to tune
+    :return:
+    """
+
+    if mu is None:
+        mu = 1.0
+
+    sizes = {'delta': labels.sum().item(),
+             'no_delta': (labels == 0).sum().item()}
+    total = sum(sizes.values())
+    weights = dict()
+
+    for label, count_labels in sizes.items():
+        if count_labels > 0:
+            w = total / float(count_labels)
+        else:
+            w = total
+        score = math.log2(mu*w)
+        weights[label] = max(score, 1.0)
+
+    weight = tr.where(labels == 0, (labels == 0).float() * weights['delta'],
+                      (labels == 1).float() * weights['no_delta'])
+
+    return weight
 
 
 class TrainModel:
@@ -113,9 +145,10 @@ class TrainModel:
 
         return dt.DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True)
 
-    def train(self):
+    def train(self, mu=None):
         """
         train the model on train data by batches iterate all epochs
+        :param: float mu: mu for creating weight in loss
         :return:
         """
 
@@ -171,14 +204,11 @@ class TrainModel:
 
                 # calculate loss
                 # print("calc loss")
-                pos_weight_delta = ((labels == 0).sum() / labels.sum()).item()
-                pos_weight_no_delta = (labels.sum() / (labels == 0).sum()).item()
-
-                pos_weight = tr.where(labels == 0, (labels == 0).float()*pos_weight_no_delta,
-                                      (labels == 1).float()*pos_weight_delta)
-                criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+                weights = create_class_weight(labels, mu)
+                criterion = nn.BCEWithLogitsLoss(weight=weights)
                 loss = criterion(outputs, labels)
 
+                # loss = self.criterion(outputs, labels)
                 # if bool(criterion(outputs, labels) != self.criterion(outputs, labels)):
                 #     print(f'not the same loss with and without pos_weight for epoch {epoch} and step {i}')
                 # loss = self.criterion(outputs, labels)
@@ -261,12 +291,14 @@ class TrainModel:
                     probabilities = probabilities.cuda()
 
                 # calculate loss
-                pos_weight_delta = ((labels == 0).sum() / labels.sum()).item()
-                pos_weight_no_delta = (labels.sum() / (labels == 0).sum()).item()
-
-                pos_weight = tr.where(labels == 0, (labels == 0).float()*pos_weight_no_delta,
-                                      (labels == 1).float()*pos_weight_delta)
-                criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+                # pos_weight_delta = ((labels.long() == 0).sum() / labels.long().sum()).item()
+                # pos_weight_no_delta = (labels.long().sum() / (labels.long() == 0).sum()).item()
+                #
+                # pos_weight = tr.where(labels == 0, (labels == 0).float()*pos_weight_no_delta,
+                #                       (labels == 1).float()*pos_weight_delta)
+                # criterion = nn.BCEWithLogitsLoss(weight=pos_weight)
+                weights = create_class_weight(labels)
+                criterion = nn.BCEWithLogitsLoss(weight=weights)
                 loss = criterion(outputs, labels)
                 # loss = self.criterion(outputs, labels)
                 # if want graph per epoch
@@ -459,19 +491,12 @@ def main(is_cuda):
     criterion = nn.BCEWithLogitsLoss()
     learning_rate = 0.001  # range 0.0003-0.001 batch grows -> lr grows
     batch_size = 24  # TRY BATCH SIZE 100
-    num_epochs = 500
+    num_epochs = 750
     num_labels = 2
     fc1 = 32
     fc2 = 16
     fc1_dropout = 0.2
     fc2_dropout = 0.5
-
-    base_directory = os.getenv('PWD')
-    curr_model_outputs_dir = os.path.join(base_directory, 'model_outputs', datetime.now().strftime(
-        f'%d_%m_%Y_%H_%M_LR_{learning_rate}_batch_size_{batch_size}_num_epochs_{num_epochs}_fc1_dropout_{fc1_dropout}_'
-        f'fc2_dropout_{fc2_dropout}'))
-    if not os.path.exists(curr_model_outputs_dir):
-        os.makedirs(curr_model_outputs_dir)
 
     # define LSTM layers hyperparameters
     init_lstm_text = InitLstm(input_size=len(branch_comments_embedded_text_df_train.iloc[0, 0]), hidden_size=20,
@@ -495,6 +520,13 @@ def main(is_cuda):
                                 # submission features + branch features
     input_size_sub_profile_features = len(submission_data_dict_train[list(submission_data_dict_train.keys())[0]][2])
 
+    base_directory = os.getenv('PWD')
+    curr_model_outputs_dir = os.path.join(base_directory, 'model_outputs', datetime.now().strftime(
+        f'%d_%m_%Y_%H_%M_LR_{learning_rate}_batch_size_{batch_size}_num_epochs_{num_epochs}_fc1_dropout_{fc1_dropout}_'
+        f'fc2_dropout_{fc2_dropout}'))
+    if not os.path.exists(curr_model_outputs_dir):
+        os.makedirs(curr_model_outputs_dir)
+
     # create training instance
     train_model = TrainModel(train_data, test_data, learning_rate, criterion, batch_size, num_epochs, num_labels, fc1,
                              fc2, init_lstm_text, init_lstm_comments, init_lstm_users, init_conv_text,
@@ -503,13 +535,18 @@ def main(is_cuda):
                              is_cuda, curr_model_outputs_dir)
 
     # train and test model
-    train_model.train()
-    joblib.dump(train_model.measurements_dict, os.path.join(curr_model_outputs_dir, 'measurements_dict.pkl'))
+    for curr_mu in [1.5, 2.0, 2.5, 3.0]:
+        curr_model_outputs_mu_dir = os.path.join(curr_model_outputs_dir, f'mu_{curr_mu}')
+        if not os.path.exists(curr_model_outputs_mu_dir):
+            os.makedirs(curr_model_outputs_mu_dir)
+        train_model.curr_model_outputs_dir = curr_model_outputs_mu_dir
+        train_model.train(mu=curr_mu)
+        joblib.dump(train_model.measurements_dict, os.path.join(curr_model_outputs_dir, 'measurements_dict.pkl'))
 
-    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} plot graphs')
-    measurments_list = ["accuracy", "auc", "precision", "recall", 'macro_f_score']
-    train_model.plot_graph(train_model.num_epochs, train_model.train_loss_list, train_model.test_loss_list, 'loss')
-    train_model.plot_measurements(measurments_list)
+        print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} plot graphs')
+        measurments_list = ["accuracy", "auc", "precision", "recall", 'macro_f_score']
+        train_model.plot_graph(train_model.num_epochs, train_model.train_loss_list, train_model.test_loss_list, 'loss')
+        train_model.plot_measurements(measurments_list)
 
     # sys.stdout = old_stdout
     # log_file.close()
