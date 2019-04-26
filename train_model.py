@@ -20,6 +20,7 @@ import sys
 from datetime import datetime
 import numpy as np
 import math
+from collections import defaultdict
 
 # old_stdout = sys.stdout
 # log_file = open("train_model.log", "w")
@@ -119,6 +120,8 @@ class TrainModel:
         self.test_loader = self.create_data_loader(self.test_dataset, self.batch_size)
         self.train_loss_list = list()
         self.test_loss_list = list()
+        self.mu_train_loss_dict = defaultdict(list)
+        self.mu_test_loss_dict = defaultdict(list)
         self.measurements_dict = dict()
         self.measurements_dict["train"] = dict()
         self.measurements_dict["test"] = dict()
@@ -338,16 +341,26 @@ class TrainModel:
         auc = metrics.auc(fpr, tpr)
         print("AUC: ", auc)
 
+        macro_precision = metrics.precision_score(labels, pred, average='macro')
+        print("Macro precision: ", macro_precision)
+
+        macro_recall = metrics.recall_score(labels, pred , average='macro')
+        print("Macro recall: ", macro_recall)
+
+        macro_f_score = metrics.f1_score(labels, pred, average='macro')
+        print("Macro f_score: ", macro_f_score)
+
         precision = metrics.precision_score(labels, pred)
         print("precision: ", precision)
 
         recall = metrics.recall_score(labels, pred)
         print("recall: ", recall)
 
-        macro_f_score = metrics.f1_score(labels, pred, average='macro')
-        print("macro_f_score: ", macro_f_score)
+        f_score = metrics.f1_score(labels, pred)
+        print("f_score: ", f_score)
 
-        self.measurements_dict[dataset][epoch] = [accuracy, auc, precision, recall, macro_f_score]
+        self.measurements_dict[dataset][epoch] = [accuracy, auc, precision, recall, f_score,
+                                                  macro_precision, macro_recall, macro_f_score]
 
     def plot_graph(self, epoch_count, train_loss, test_loss, measurement):
 
@@ -375,7 +388,8 @@ class TrainModel:
         fig_to_save = fig
         fig_to_save.savefig(os.path.join(self.curr_model_outputs_dir, measurement+'_graph.png'))
 
-    def plot_measurements(self, measurments_list=("accuracy", "auc", "precision", "recall", "macro_f_score")):
+    def plot_measurements(self, measurments_list=("accuracy", "auc", "precision", "recall", "f_score",
+                                                  "macro_precision", "macro_recall", "macro_f_score")):
 
         measurements_dataset_df_dict = dict()
 
@@ -491,7 +505,7 @@ def main(is_cuda):
     criterion = nn.BCEWithLogitsLoss()
     learning_rate = 0.001  # range 0.0003-0.001 batch grows -> lr grows
     batch_size = 24  # TRY BATCH SIZE 100
-    num_epochs = 750
+    num_epochs = 500
     num_labels = 2
     fc1 = 32
     fc2 = 16
@@ -536,6 +550,13 @@ def main(is_cuda):
 
     # train and test model
     for curr_mu in [1.5, 2.0, 2.5, 3.0]:
+        # initialize measures lists and dicts
+        train_model.train_loss_list = list()
+        train_model.test_loss_list = list()
+        train_model.measurements_dict = dict()
+        train_model.measurements_dict["train"] = dict()
+        train_model.measurements_dict["test"] = dict()
+
         curr_model_outputs_mu_dir = os.path.join(curr_model_outputs_dir, f'mu_{curr_mu}')
         if not os.path.exists(curr_model_outputs_mu_dir):
             os.makedirs(curr_model_outputs_mu_dir)
@@ -544,9 +565,15 @@ def main(is_cuda):
         joblib.dump(train_model.measurements_dict, os.path.join(curr_model_outputs_dir, 'measurements_dict.pkl'))
 
         print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} plot graphs')
-        measurments_list = ["accuracy", "auc", "precision", "recall", 'macro_f_score']
+        measurments_list = ["accuracy", "auc", "precision", "recall", "f_score", "macro_precision", "macro_recall",
+                            "macro_f_score"]
         train_model.plot_graph(train_model.num_epochs, train_model.train_loss_list, train_model.test_loss_list, 'loss')
+        train_model.mu_train_loss_dict[curr_mu] = train_model.train_loss_list
+        train_model.mu_test_loss_dict[curr_mu] = train_model.test_loss_list
         train_model.plot_measurements(measurments_list)
+
+    joblib.dump(train_model.mu_train_loss_dict, os.path.join(curr_model_outputs_dir, 'mu_train_loss_dict.pkl'))
+    joblib.dump(train_model.mu_test_loss_dict, os.path.join(curr_model_outputs_dir, 'mu_test_loss_dict.pkl'))
 
     # sys.stdout = old_stdout
     # log_file.close()

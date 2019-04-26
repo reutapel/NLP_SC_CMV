@@ -203,7 +203,7 @@ class CreateFeatures:
                 comment_branch_groupby.columns = ['number_of_branches', 'comment_id']
 
                 self.data = self.data.merge(comment_branch_groupby, on='comment_id')
-
+                # 
                 # load and do the pre process on all_data
                 print(f'{time.asctime(time.localtime(time.time()))}: Loading all data {data_file_name} from {data_dir}')
                 logging.info('Loading all data {} from {}'.format(data_file_name, data_dir))
