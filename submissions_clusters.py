@@ -37,7 +37,7 @@ class SubmissionsClusters:
                 columns=['submission_id', 'submission_body', 'submission_embedded_body'])
             self.embedded_submission_text = self.embedded_submission_text.append(vector, ignore_index=True)
 
-        self.embedded_submission_text.to_csv(os.path.join(trained_models_directory, 'new', 'embedded_submission_text'))
+        self.embedded_submission_text.to_csv(os.path.join(trained_models_directory, 'new', 'embedded_submission_text.csv'))
         print(f'{time.asctime(time.localtime(time.time()))}: finish creating data')
 
     def tsne_cluster(self):
