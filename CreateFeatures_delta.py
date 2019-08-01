@@ -157,7 +157,7 @@ class CreateFeatures:
         self.train_data_term_matrix = None
         self.lda_model = None
         self.doc2vec_model = None
-        self.doc2vec_vector_size = 300
+        self.doc2vec_vector_size = 200
         self.submission_comments_dict = None
         self.branch_comments_dict = None
         self.submission_data_dict = dict()
@@ -1253,7 +1253,7 @@ def mentioned_another_subreddit(comment_body: str) -> int:
 
 def contain_url(comment_body: str) -> int:
     """
-    Check if a url is mentioned in the comment
+    The number of urls that are in the comment
     :param comment_body: the comment to check
     :return: the number of times a url was mentioned in the comment
     """

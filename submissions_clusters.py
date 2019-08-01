@@ -7,6 +7,11 @@ from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 from sklearn.mixture import GaussianMixture
 import time
+from nltk.corpus import stopwords
+from nltk.stem.wordnet import WordNetLemmatizer
+import string
+import gensim
+from gensim.sklearn_api import ldamodel
 
 
 base_directory = os.path.abspath(os.curdir)
@@ -17,17 +22,36 @@ trained_models_directory = os.path.join(base_directory, 'trained_models')
 
 
 class SubmissionsClusters:
-    def __init__(self):
-        print(f'{time.asctime(time.localtime(time.time()))}: start loading data and doc2vec model')
-        self.branch_comments_info_df = pd.read_csv(
-            os.path.join(save_data_directory, 'comments_label_branch_info_after_remove.csv'))
-        doc2vec_dir = os.path.join(trained_models_directory, 'new', 'doc2vec_model.pkl')
-        self.doc2vec_model = joblib.load(doc2vec_dir)
-        self.embedded_submission_text = pd.DataFrame()
-        print(f'{time.asctime(time.localtime(time.time()))}: finish loading data and doc2vec model')
+    def __init__(self, number_of_topics, use_topic=False):
+        self.number_of_topics = number_of_topics
+        embedded_file_path = os.path.join(os.path.join(trained_models_directory, 'new', 'embedded_submission_text.pkl'))
+        if not os.path.isfile(embedded_file_path):
+            print(f'{time.asctime(time.localtime(time.time()))}: '
+                  f'start loading data and doc2vec model and create text representation')
+            self.branch_comments_info_df = pd.read_csv(
+                os.path.join(save_data_directory, 'comments_label_branch_info_after_remove.csv'))
+            doc2vec_dir = os.path.join(trained_models_directory, 'new', 'doc2vec_model.pkl')
+            self.doc2vec_model = joblib.load(doc2vec_dir)
+            self.embedded_submission_text = pd.DataFrame()
+            if not use_topic:  # if using embedded as text representations
+                self.create_embedded()
+                self.text_presentation = self.embedded_submission_text
+            else:  # if needs to create topics and we don't have embedded yet - use the orig data
+                all_submissions = self.branch_comments_info_df[['submission_body', 'submission_id']]
+                all_submissions = all_submissions.drop_duplicates()
+                self.embedded_submission_text = all_submissions
+                self.text_presentation = self.topic_model()
+            print(f'{time.asctime(time.localtime(time.time()))}: '
+                  f'finish loading data and doc2vec model and create text representation')
+        else:
+            self.embedded_submission_text = pd.read_pickle(embedded_file_path)
+            if use_topic:
+                self.text_presentation = self.topic_model()
+            else:
+                self.text_presentation = self.embedded_submission_text
 
     def create_embedded(self):
-        print(f'{time.asctime(time.localtime(time.time()))}: start creating data')
+        print(f'{time.asctime(time.localtime(time.time()))}: start creating embedded data')
         all_submissions = self.branch_comments_info_df[['submission_body', 'submission_id']]
         all_submissions = all_submissions.drop_duplicates()
         for index, row in all_submissions.iterrows():
@@ -37,8 +61,9 @@ class SubmissionsClusters:
                 columns=['submission_id', 'submission_body', 'submission_embedded_body'])
             self.embedded_submission_text = self.embedded_submission_text.append(vector, ignore_index=True)
 
-        self.embedded_submission_text.to_csv(os.path.join(trained_models_directory, 'new', 'embedded_submission_text.csv'))
-        print(f'{time.asctime(time.localtime(time.time()))}: finish creating data')
+        self.embedded_submission_text.to_pickle(os.path.join(trained_models_directory, 'new',
+                                                             'embedded_submission_text.pkl'))
+        print(f'{time.asctime(time.localtime(time.time()))}: finish creating embedded data')
 
     def tsne_cluster(self):
         # perplexity - denotes the effective number of neighbors every example has range[5-50],
@@ -46,7 +71,7 @@ class SubmissionsClusters:
         # learning rate - kl-divergance is non convex, with gradient descent no guarantee for non local minima
         print(f'{time.asctime(time.localtime(time.time()))}: start TSNE cluster')
         pca_model = PCA(n_components=50)
-        pca_vector = pca_model.fit_transform(self.embedded_submission_text['submission_embedded_body'])
+        pca_vector = pca_model.fit_transform(self.embedded_submission_text['submission_embedded_body'].apply(pd.Series))
         tnse_model = TSNE(n_components=2, perplexity=30.0, early_exaggeration=4.0, random_state=0, method='barnes_hut',
                           angle=0.5, learning_rate=1000, n_iter=1000, n_iter_without_progress=30, metric='euclidean',
                           init='pca', verbose=0)
@@ -64,18 +89,77 @@ class SubmissionsClusters:
     def gmm_cluster(self):
         print(f'{time.asctime(time.localtime(time.time()))}: start GMM cluster')
         gmm = GaussianMixture(n_components=10, covariance_type='full')
-        gmm.fit(self.embedded_submission_text['submission_embedded_body'])
-        y_pred = gmm.predict(self.embedded_submission_text['submission_embedded_body'])
+        gmm.fit(self.embedded_submission_text['submission_embedded_body'].apply(pd.Series))
+        y_pred = gmm.predict(self.embedded_submission_text['submission_embedded_body'].apply(pd.Series))
         final_gmm_result =\
-            pd.concat([self.embedded_submission_text[['submission_body', 'submission_id']], y_pred], axis=1)
-        final_gmm_result.to_csv(os.path.join(trained_models_directory, 'new', 'gmm_results'))
+            pd.concat([self.embedded_submission_text[['submission_body', 'submission_id']], pd.Series(y_pred)], axis=1)
+        final_gmm_result.to_csv(os.path.join(trained_models_directory, 'new', 'gmm_results.csv'))
 
         print(f'{time.asctime(time.localtime(time.time()))}: finish GMM cluster')
 
+    def topic_model(self):
+        """
+        Calculate the topic model for all the units, the probability that the comment has each of the topics
+        :return: pandas DF[number_of_units, number_of_topics] - the probability for each comment and topic
+        """
+        print('{}: Start topic model'.format((time.asctime(time.localtime(time.time())))))
+        # Clean the data
+        print('{}: Clean the data'.format((time.asctime(time.localtime(time.time())))))
+
+        data_clean = {row['submission_id']: clean(row['submission_body']).split()
+                      for index, row in self.embedded_submission_text.iterrows()}
+
+        # Creating the term dictionary of our corpus, where every unique term is assigned an index.
+        print('{}: Create the dictionary'.format(time.asctime(time.localtime(time.time()))))
+        dictionary = gensim.corpora.Dictionary(data_clean.values())
+
+        # Converting list of documents (corpus) into Document Term Matrix using dictionary prepared above.
+        print('{}: Create data term matrix'.format(time.asctime(time.localtime(time.time()))))
+        data_term_matrix = {index: dictionary.doc2bow(doc) for index, doc in data_clean.items()}
+
+        # Get topics for the data
+        print('{}: Predict topics'.format(time.asctime(time.localtime(time.time()))))
+
+        lda_model = ldamodel.LdaTransformer(num_topics=self.number_of_topics, id2word=dictionary, passes=50,
+                                            minimum_probability=0)
+        result = lda_model.transform(list(data_term_matrix.values()))
+
+        print('{}: Create final topic model'.format(time.asctime(time.localtime(time.time()))))
+        comment_ids_df = pd.DataFrame(list(data_term_matrix.keys()), columns=['submission_id'])
+        result_columns = [i for i in range(self.number_of_topics)]
+        topic_model_result_df = pd.DataFrame(result, columns=result_columns)
+
+        print('{}: Save final topic model'.format(time.asctime(time.localtime(time.time()))))
+        topic_model_final_result = pd.concat([comment_ids_df, topic_model_result_df], axis=1)
+        print('{}: Finish topic model'.format((time.asctime(time.localtime(time.time())))))
+
+        return topic_model_final_result
+
+
+def clean(text):
+    """
+    This function clean a text from stop words and punctuations and them lemmatize the words
+    :param str text: the text we want to clean
+    :return: str normalized: the cleaned text
+    """
+
+    # for topic modeling clean text
+    stop = set(stopwords.words('english'))
+    exclude = set(string.punctuation)
+    lemma = WordNetLemmatizer()
+
+    text = text.lstrip('b').strip('"').strip("'").strip(">")
+    stop_free = " ".join([i for i in text.lower().split() if i not in stop])
+    punc_free = "".join(ch for ch in stop_free if ch not in exclude)
+    normalized = " ".join(lemma.lemmatize(word) for word in punc_free.split())
+    return normalized
+
 
 def main():
-    submissions_clusters_obj = SubmissionsClusters()
-    submissions_clusters_obj.create_embedded()
+    number_of_topics = 15
+    submissions_clusters_obj = SubmissionsClusters(number_of_topics)
+
+    submissions_clusters_obj.topic_model()
     submissions_clusters_obj.tsne_cluster()
     submissions_clusters_obj.gmm_cluster()
 

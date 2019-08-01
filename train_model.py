@@ -429,6 +429,7 @@ def main(is_cuda):
 
         # load train data
         if 'train' in all_data_dict.keys():
+            print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create train data')
             branch_comments_embedded_text_df_train = all_data_dict['train']['branch_comments_embedded_text_df_train']
             branch_comments_features_df_train = all_data_dict['train']['branch_comments_features_df_train']
             branch_comments_user_profiles_df_train = all_data_dict['train']['branch_comments_user_profiles_df_train']
@@ -440,6 +441,7 @@ def main(is_cuda):
 
         # load test data
         if 'testi' in all_data_dict.keys():
+            print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create test data')
             branch_comments_embedded_text_df_test = all_data_dict['testi']['branch_comments_embedded_text_df_testi']
             branch_comments_features_df_test = all_data_dict['testi']['branch_comments_features_df_testi']
             branch_comments_user_profiles_df_test = all_data_dict['testi']['branch_comments_user_profiles_df_testi']
@@ -451,6 +453,7 @@ def main(is_cuda):
 
         # load valid data
         if 'valid' in all_data_dict.keys():
+            print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create validation data')
             branch_comments_embedded_text_df_valid = all_data_dict['valid']['branch_comments_embedded_text_df_valid']
             branch_comments_features_df_valid = all_data_dict['valid']['branch_comments_features_df_valid']
             branch_comments_user_profiles_df_valid = all_data_dict['valid']['branch_comments_user_profiles_df_valid']
@@ -513,6 +516,7 @@ def main(is_cuda):
     fc2_dropout = 0.5
 
     # define LSTM layers hyperparameters
+    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} define LSTM layers hyperparameters')
     init_lstm_text = InitLstm(input_size=len(branch_comments_embedded_text_df_train.iloc[0, 0]), hidden_size=20,
                               num_layers=2, batch_first=True)
     init_lstm_comments = InitLstm(input_size=len(branch_comments_features_df_train.iloc[0, 0]), hidden_size=10,
@@ -521,6 +525,7 @@ def main(is_cuda):
                                num_layers=2, batch_first=True)
 
     # define conv layers hyperparameters
+    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} define conv layers hyperparameters')
     init_conv_text = InitConv1d(in_channels=1, out_channels=9, kernel_size=3, stride=1, padding=0,
                                 leaky_relu_alpha=0.2)
     init_conv_sub_features = InitConv1d(in_channels=1, out_channels=9, kernel_size=3, stride=1, padding=0,
@@ -535,6 +540,7 @@ def main(is_cuda):
     input_size_sub_profile_features = len(submission_data_dict_train[list(submission_data_dict_train.keys())[0]][2])
 
     base_directory = os.getenv('PWD')
+    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create outputs directory')
     curr_model_outputs_dir = os.path.join(base_directory, 'model_outputs', datetime.now().strftime(
         f'%d_%m_%Y_%H_%M_LR_{learning_rate}_batch_size_{batch_size}_num_epochs_{num_epochs}_fc1_dropout_{fc1_dropout}_'
         f'fc2_dropout_{fc2_dropout}'))
@@ -542,6 +548,7 @@ def main(is_cuda):
         os.makedirs(curr_model_outputs_dir)
 
     # create training instance
+    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create training instance')
     train_model = TrainModel(train_data, test_data, learning_rate, criterion, batch_size, num_epochs, num_labels, fc1,
                              fc2, init_lstm_text, init_lstm_comments, init_lstm_users, init_conv_text,
                              init_conv_sub_features, init_conv_sub_profile_features, input_size_text_sub,
@@ -549,7 +556,9 @@ def main(is_cuda):
                              is_cuda, curr_model_outputs_dir)
 
     # train and test model
+    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} train and test model')
     for curr_mu in [1.5, 2.0, 2.5, 3.0]:
+        print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} train for mu: {curr_mu}')
         # initialize measures lists and dicts
         train_model.train_loss_list = list()
         train_model.test_loss_list = list()
