@@ -2,6 +2,7 @@ import pandas as pd
 import os
 from collections import defaultdict
 import joblib
+from time import gmtime, strftime
 
 
 class ImportSplitData:
@@ -28,13 +29,17 @@ class ImportSplitData:
 
     def load_join_data(self):
         # collect all files by folder
-        for dataset in self.data_folders_dict.keys():
+        print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} collect all files by folder')
+        for dataset in ['train', 'testi']:  # self.data_folders_dict.keys():
+            print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} load from {dataset}')
             first_folder = True
             for folder in self.data_folders_dict[dataset]:
+                print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} load from {folder}')
                 # get folder path
                 path = os.path.join(os.getcwd(), 'features_to_use', folder)
                 # iterate over all files in each dataset folder
                 for filename in os.listdir(path):
+                    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} load {filename}')
                     if filename == '.DS_Store':
                         continue
                     # connect all part of files of the same dataset
@@ -59,6 +64,7 @@ class ImportSplitData:
         # 1. reindex Dataframes by new joined & sorted len list df
         # 2. replace dictionary keys in new order
         # 3. update len sorted list
+        print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} sort joined data')
         for dataset in self.data_folders_dict.keys():
             if dataset == 'train':
                 dataset_suffix = 'train'

@@ -22,6 +22,7 @@ from doc2vec import Doc2Vec
 import joblib
 import sys
 import ray
+import re
 # from gensim import corpora
 # from nltk.stem import PorterStemmer
 # from nltk.tokenize import sent_tokenize, word_tokenize
@@ -32,7 +33,7 @@ data_directory = os.path.join(base_directory, 'data')
 trained_models_directory = os.path.join(base_directory, 'trained_models')
 save_data_directory = os.path.join(data_directory, 'filter_submissions')
 train_test_data_directory = os.path.join(data_directory, 'filter_submissions')
-features_directory = os.path.join(base_directory, 'features')
+features_directory = os.path.join(base_directory, 'features_to_use')
 log_directory = os.path.join(base_directory, 'logs')
 
 
@@ -115,7 +116,8 @@ class CreateFeatures:
         self.comment_features_columns = ['comment_real_depth', 'comment_len', 'time_between_sub_com',
                                          'percent_adj', 'time_between_comment_first_comment', 'submission_num_comments',
                                          'time_ratio_first_comment', 'nltk_com_sen_pos', 'nltk_com_sen_neg',
-                                         'nltk_com_sen_neutral', 'nltk_sim_sen', 'is_quote', 'number_of_branches']
+                                         'nltk_com_sen_neutral', 'nltk_sim_sen', 'is_quote', 'number_of_branches',
+                                         'num_mentioned_subreddit', 'num_mentioned_url']
         self.comment_features_columns_len = len(self.comment_features_columns) + number_of_topics
         self.branch_comments_features_df = None
 
@@ -155,7 +157,7 @@ class CreateFeatures:
         self.train_data_term_matrix = None
         self.lda_model = None
         self.doc2vec_model = None
-        self.doc2vec_vector_size = 50
+        self.doc2vec_vector_size = 200
         self.submission_comments_dict = None
         self.branch_comments_dict = None
         self.submission_data_dict = dict()
@@ -201,7 +203,7 @@ class CreateFeatures:
                 comment_branch_groupby.columns = ['number_of_branches', 'comment_id']
 
                 self.data = self.data.merge(comment_branch_groupby, on='comment_id')
-
+                # 
                 # load and do the pre process on all_data
                 print(f'{time.asctime(time.localtime(time.time()))}: Loading all data {data_file_name} from {data_dir}')
                 logging.info('Loading all data {} from {}'.format(data_file_name, data_dir))
@@ -607,6 +609,10 @@ class CreateFeatures:
             comment_features.loc['comment_real_depth'] = comment['comment_real_depth']
             comment_features.loc['number_of_branches'] = comment['number_of_branches']
 
+            # number of times another subreddit or a url was mentioned
+            comment_features.loc['num_mentioned_subreddit'] = mentioned_another_subreddit(comment_body)
+            comment_features.loc['num_mentioned_url'] = contain_url(comment_body)
+
             # treatment:
             comment_features.loc['is_quote'] = self.loop_over_comment_for_quote(comment, comment_body)
             # Get the time between the submission and the comment time and the ration between the first comment:
@@ -748,7 +754,7 @@ class CreateFeatures:
         file_path1 = os.path.join(features_dir_path, 'branch_comments_features_df_' + self.data_file_name + '.pkl')
         file_path2 = os.path.join(features_dir_path, 'branch_comments_user_profiles_df_' +
                                   self.data_file_name + '.pkl')
-        if not os.path.isfile(file_path1) and not os.path.isfile(file_path2):
+        if not os.path.isfile(file_path1) or not os.path.isfile(file_path2):
             self.create_branch_comments_features_df()
             # joblib.dump(self.branch_comments_features_df, file_path1 + '.compressed', compress=True)
             # joblib.dump(self.branch_comments_user_profiles_df, file_path2 + '.compressed', compress=True)
@@ -1229,6 +1235,33 @@ def clean(text, comment_id):
     return normalized
 
 
+def mentioned_another_subreddit(comment_body: str) -> int:
+    """
+    The number of other subreddits that mentioned the comment
+    :param comment_body: the comment to check
+    :return: the number of times another subreddit was mentioned in the comment
+    """
+    reference_subreddit = comment_body[comment_body.find('r'):].split('/')  # split the body from /r/
+    number_of_r = 0
+    comment_list_len = len(reference_subreddit)
+    for i in range(0, comment_list_len):
+        # consider as reference_subreddit if the subreddit that is mentioned is not changemyview
+        if reference_subreddit[i] == 'r' and i + 1 < comment_list_len and reference_subreddit[i + 1] != 'changemyview':
+            number_of_r += 1
+    return number_of_r
+
+
+def contain_url(comment_body: str) -> int:
+    """
+    The number of urls that are in the comment
+    :param comment_body: the comment to check
+    :return: the number of times a url was mentioned in the comment
+    """
+    # findall() has been used with valid conditions for urls in string
+    url = re.findall('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+] |[!*\(\), ]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', comment_body)
+    return len(url)
+
+
 def split_data_and_run(data_type: str, create_features: CreateFeatures, split_number: int):
     print(f'{time.asctime(time.localtime(time.time()))}: Split {data_type} data to create features')
     logging.info('Split {} data to create features'.format(data_type))
@@ -1343,7 +1376,7 @@ def execute_parallel(data_set, data_type: str):
     logging.info('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
     # load_data to be False if we already have the trained model and we don't need to load the train data
     trained_models_dir = os.path.join(train_test_data_directory, 'split_data', data_set, 'trained_models')
-    create_features.create_data('train', is_train=True, load_data=False, trained_models_dir=trained_models_dir)
+    create_features.create_data('train', is_train=True, load_data=True, trained_models_dir=trained_models_dir)
 
     print('{}: Start run data set {}'.format((time.asctime(time.localtime(time.time()))), data_set))
     logging.info('Start run data set {}'.format(data_set))
@@ -1423,13 +1456,14 @@ def manual_parallel_main():
     logging.info('Loading train data or fitted models')
     # load_data to be False if we already have the trained model and we don't need to load the train data
     trained_models_dir = os.path.join(train_test_data_directory, 'split_data', data_set, 'trained_models')
-    create_features.create_data('train', is_train=True, load_data=False, trained_models_dir=trained_models_dir)
+    curr_data_directory = os.path.join(train_test_data_directory, 'split_data', data_set)
+
+    create_features.create_data('train', is_train=True, load_data=False, trained_models_dir=trained_models_dir,
+                                data_dir=curr_data_directory)
 
     features_dir_path = os.path.join(features_directory, data_set)
     if not os.path.exists(features_dir_path):
         os.makedirs(features_dir_path)
-
-    curr_data_directory = os.path.join(train_test_data_directory, 'split_data', data_set)
 
     print('{}: Loading data'.format((time.asctime(time.localtime(time.time())))))
     logging.info('Loading data')

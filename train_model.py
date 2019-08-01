@@ -20,6 +20,7 @@ import sys
 from datetime import datetime
 import numpy as np
 import math
+from collections import defaultdict
 
 # old_stdout = sys.stdout
 # log_file = open("train_model.log", "w")
@@ -119,6 +120,8 @@ class TrainModel:
         self.test_loader = self.create_data_loader(self.test_dataset, self.batch_size)
         self.train_loss_list = list()
         self.test_loss_list = list()
+        self.mu_train_loss_dict = defaultdict(list)
+        self.mu_test_loss_dict = defaultdict(list)
         self.measurements_dict = dict()
         self.measurements_dict["train"] = dict()
         self.measurements_dict["test"] = dict()
@@ -338,16 +341,26 @@ class TrainModel:
         auc = metrics.auc(fpr, tpr)
         print("AUC: ", auc)
 
+        macro_precision = metrics.precision_score(labels, pred, average='macro')
+        print("Macro precision: ", macro_precision)
+
+        macro_recall = metrics.recall_score(labels, pred , average='macro')
+        print("Macro recall: ", macro_recall)
+
+        macro_f_score = metrics.f1_score(labels, pred, average='macro')
+        print("Macro f_score: ", macro_f_score)
+
         precision = metrics.precision_score(labels, pred)
         print("precision: ", precision)
 
         recall = metrics.recall_score(labels, pred)
         print("recall: ", recall)
 
-        macro_f_score = metrics.f1_score(labels, pred, average='macro')
-        print("macro_f_score: ", macro_f_score)
+        f_score = metrics.f1_score(labels, pred)
+        print("f_score: ", f_score)
 
-        self.measurements_dict[dataset][epoch] = [accuracy, auc, precision, recall, macro_f_score]
+        self.measurements_dict[dataset][epoch] = [accuracy, auc, precision, recall, f_score,
+                                                  macro_precision, macro_recall, macro_f_score]
 
     def plot_graph(self, epoch_count, train_loss, test_loss, measurement):
 
@@ -375,7 +388,8 @@ class TrainModel:
         fig_to_save = fig
         fig_to_save.savefig(os.path.join(self.curr_model_outputs_dir, measurement+'_graph.png'))
 
-    def plot_measurements(self, measurments_list=("accuracy", "auc", "precision", "recall", "macro_f_score")):
+    def plot_measurements(self, measurments_list=("accuracy", "auc", "precision", "recall", "f_score",
+                                                  "macro_precision", "macro_recall", "macro_f_score")):
 
         measurements_dataset_df_dict = dict()
 
@@ -415,6 +429,7 @@ def main(is_cuda):
 
         # load train data
         if 'train' in all_data_dict.keys():
+            print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create train data')
             branch_comments_embedded_text_df_train = all_data_dict['train']['branch_comments_embedded_text_df_train']
             branch_comments_features_df_train = all_data_dict['train']['branch_comments_features_df_train']
             branch_comments_user_profiles_df_train = all_data_dict['train']['branch_comments_user_profiles_df_train']
@@ -426,6 +441,7 @@ def main(is_cuda):
 
         # load test data
         if 'testi' in all_data_dict.keys():
+            print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create test data')
             branch_comments_embedded_text_df_test = all_data_dict['testi']['branch_comments_embedded_text_df_testi']
             branch_comments_features_df_test = all_data_dict['testi']['branch_comments_features_df_testi']
             branch_comments_user_profiles_df_test = all_data_dict['testi']['branch_comments_user_profiles_df_testi']
@@ -437,6 +453,7 @@ def main(is_cuda):
 
         # load valid data
         if 'valid' in all_data_dict.keys():
+            print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create validation data')
             branch_comments_embedded_text_df_valid = all_data_dict['valid']['branch_comments_embedded_text_df_valid']
             branch_comments_features_df_valid = all_data_dict['valid']['branch_comments_features_df_valid']
             branch_comments_user_profiles_df_valid = all_data_dict['valid']['branch_comments_user_profiles_df_valid']
@@ -491,7 +508,7 @@ def main(is_cuda):
     criterion = nn.BCEWithLogitsLoss()
     learning_rate = 0.001  # range 0.0003-0.001 batch grows -> lr grows
     batch_size = 24  # TRY BATCH SIZE 100
-    num_epochs = 750
+    num_epochs = 500
     num_labels = 2
     fc1 = 32
     fc2 = 16
@@ -499,6 +516,7 @@ def main(is_cuda):
     fc2_dropout = 0.5
 
     # define LSTM layers hyperparameters
+    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} define LSTM layers hyperparameters')
     init_lstm_text = InitLstm(input_size=len(branch_comments_embedded_text_df_train.iloc[0, 0]), hidden_size=20,
                               num_layers=2, batch_first=True)
     init_lstm_comments = InitLstm(input_size=len(branch_comments_features_df_train.iloc[0, 0]), hidden_size=10,
@@ -507,6 +525,7 @@ def main(is_cuda):
                                num_layers=2, batch_first=True)
 
     # define conv layers hyperparameters
+    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} define conv layers hyperparameters')
     init_conv_text = InitConv1d(in_channels=1, out_channels=9, kernel_size=3, stride=1, padding=0,
                                 leaky_relu_alpha=0.2)
     init_conv_sub_features = InitConv1d(in_channels=1, out_channels=9, kernel_size=3, stride=1, padding=0,
@@ -521,6 +540,7 @@ def main(is_cuda):
     input_size_sub_profile_features = len(submission_data_dict_train[list(submission_data_dict_train.keys())[0]][2])
 
     base_directory = os.getenv('PWD')
+    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create outputs directory')
     curr_model_outputs_dir = os.path.join(base_directory, 'model_outputs', datetime.now().strftime(
         f'%d_%m_%Y_%H_%M_LR_{learning_rate}_batch_size_{batch_size}_num_epochs_{num_epochs}_fc1_dropout_{fc1_dropout}_'
         f'fc2_dropout_{fc2_dropout}'))
@@ -528,6 +548,7 @@ def main(is_cuda):
         os.makedirs(curr_model_outputs_dir)
 
     # create training instance
+    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create training instance')
     train_model = TrainModel(train_data, test_data, learning_rate, criterion, batch_size, num_epochs, num_labels, fc1,
                              fc2, init_lstm_text, init_lstm_comments, init_lstm_users, init_conv_text,
                              init_conv_sub_features, init_conv_sub_profile_features, input_size_text_sub,
@@ -535,7 +556,16 @@ def main(is_cuda):
                              is_cuda, curr_model_outputs_dir)
 
     # train and test model
+    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} train and test model')
     for curr_mu in [1.5, 2.0, 2.5, 3.0]:
+        print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} train for mu: {curr_mu}')
+        # initialize measures lists and dicts
+        train_model.train_loss_list = list()
+        train_model.test_loss_list = list()
+        train_model.measurements_dict = dict()
+        train_model.measurements_dict["train"] = dict()
+        train_model.measurements_dict["test"] = dict()
+
         curr_model_outputs_mu_dir = os.path.join(curr_model_outputs_dir, f'mu_{curr_mu}')
         if not os.path.exists(curr_model_outputs_mu_dir):
             os.makedirs(curr_model_outputs_mu_dir)
@@ -544,9 +574,15 @@ def main(is_cuda):
         joblib.dump(train_model.measurements_dict, os.path.join(curr_model_outputs_dir, 'measurements_dict.pkl'))
 
         print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} plot graphs')
-        measurments_list = ["accuracy", "auc", "precision", "recall", 'macro_f_score']
+        measurments_list = ["accuracy", "auc", "precision", "recall", "f_score", "macro_precision", "macro_recall",
+                            "macro_f_score"]
         train_model.plot_graph(train_model.num_epochs, train_model.train_loss_list, train_model.test_loss_list, 'loss')
+        train_model.mu_train_loss_dict[curr_mu] = train_model.train_loss_list
+        train_model.mu_test_loss_dict[curr_mu] = train_model.test_loss_list
         train_model.plot_measurements(measurments_list)
+
+    joblib.dump(train_model.mu_train_loss_dict, os.path.join(curr_model_outputs_dir, 'mu_train_loss_dict.pkl'))
+    joblib.dump(train_model.mu_test_loss_dict, os.path.join(curr_model_outputs_dir, 'mu_test_loss_dict.pkl'))
 
     # sys.stdout = old_stdout
     # log_file.close()
