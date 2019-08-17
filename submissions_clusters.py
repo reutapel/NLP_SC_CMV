@@ -22,33 +22,35 @@ trained_models_directory = os.path.join(base_directory, 'trained_models')
 
 
 class SubmissionsClusters:
-    def __init__(self, number_of_topics, use_topic=False):
+    def __init__(self, data, number_of_topics=15, use_topic=False):
+        # self.number_of_topics = number_of_topics
+        # embedded_file_path = os.path.join(os.path.join(trained_models_directory, 'new', 'embedded_submission_text.pkl'))
+        # if not os.path.isfile(embedded_file_path):
+        #     print(f'{time.asctime(time.localtime(time.time()))}: '
+        #           f'start loading data and doc2vec model and create text representation')
+        #     self.branch_comments_info_df = pd.read_csv(
+        #         os.path.join(save_data_directory, 'comments_label_branch_info_after_remove.csv'))
+        #     doc2vec_dir = os.path.join(trained_models_directory, 'new', 'doc2vec_model.pkl')
+        #     self.doc2vec_model = joblib.load(doc2vec_dir)
+        #     self.embedded_submission_text = pd.DataFrame()
+        #     if not use_topic:  # if using embedded as text representations
+        #         self.create_embedded()
+        #         self.text_presentation = self.embedded_submission_text
+        #     else:  # if needs to create topics and we don't have embedded yet - use the orig data
+        #         all_submissions = self.branch_comments_info_df[['submission_body', 'submission_id']]
+        #         all_submissions = all_submissions.drop_duplicates()
+        #         self.embedded_submission_text = all_submissions
+        #         self.text_presentation = self.topic_model()
+        #     print(f'{time.asctime(time.localtime(time.time()))}: '
+        #           f'finish loading data and doc2vec model and create text representation')
+        # else:
+        #     self.embedded_submission_text = pd.read_pickle(embedded_file_path)
+        #     if use_topic:
+        #         self.text_presentation = self.topic_model()
+        #     else:
+        #         self.text_presentation = self.embedded_submission_text
+        self.data = data
         self.number_of_topics = number_of_topics
-        embedded_file_path = os.path.join(os.path.join(trained_models_directory, 'new', 'embedded_submission_text.pkl'))
-        if not os.path.isfile(embedded_file_path):
-            print(f'{time.asctime(time.localtime(time.time()))}: '
-                  f'start loading data and doc2vec model and create text representation')
-            self.branch_comments_info_df = pd.read_csv(
-                os.path.join(save_data_directory, 'comments_label_branch_info_after_remove.csv'))
-            doc2vec_dir = os.path.join(trained_models_directory, 'new', 'doc2vec_model.pkl')
-            self.doc2vec_model = joblib.load(doc2vec_dir)
-            self.embedded_submission_text = pd.DataFrame()
-            if not use_topic:  # if using embedded as text representations
-                self.create_embedded()
-                self.text_presentation = self.embedded_submission_text
-            else:  # if needs to create topics and we don't have embedded yet - use the orig data
-                all_submissions = self.branch_comments_info_df[['submission_body', 'submission_id']]
-                all_submissions = all_submissions.drop_duplicates()
-                self.embedded_submission_text = all_submissions
-                self.text_presentation = self.topic_model()
-            print(f'{time.asctime(time.localtime(time.time()))}: '
-                  f'finish loading data and doc2vec model and create text representation')
-        else:
-            self.embedded_submission_text = pd.read_pickle(embedded_file_path)
-            if use_topic:
-                self.text_presentation = self.topic_model()
-            else:
-                self.text_presentation = self.embedded_submission_text
 
     def create_embedded(self):
         print(f'{time.asctime(time.localtime(time.time()))}: start creating embedded data')
@@ -65,37 +67,56 @@ class SubmissionsClusters:
                                                              'embedded_submission_text.pkl'))
         print(f'{time.asctime(time.localtime(time.time()))}: finish creating embedded data')
 
-    def tsne_cluster(self):
+    def tsne_cluster(self, plot_tsne_results=True, is_pca_pre=True, pca_dim_pre=50, n_components=2, perplexity=30.0,
+                     early_exaggeration=4.0, random_state=0, method='barnes_hut', angle=0.5, learning_rate=1000,
+                     n_iter=1000, n_iter_without_progress=30, metric='euclidean', init='pca', verbose=0):
+
         # perplexity - denotes the effective number of neighbors every example has range[5-50],
         # early_exaggeration - how spaced you want the clusters to be
         # learning rate - kl-divergance is non convex, with gradient descent no guarantee for non local minima
         print(f'{time.asctime(time.localtime(time.time()))}: start TSNE cluster')
-        pca_model = PCA(n_components=50)
-        pca_vector = pca_model.fit_transform(self.embedded_submission_text['submission_embedded_body'].apply(pd.Series))
-        tnse_model = TSNE(n_components=2, perplexity=30.0, early_exaggeration=4.0, random_state=0, method='barnes_hut',
-                          angle=0.5, learning_rate=1000, n_iter=1000, n_iter_without_progress=30, metric='euclidean',
-                          init='pca', verbose=0)
-        x_tsne = tnse_model.fit_transform(pca_vector)
 
-        plt.figure(figsize=(10, 5))
-        plt.subplot(121)
-        plt.scatter(x_tsne[:, 0], x_tsne[:, 1])
+        # declare TSNE model
+        tnse_model = TSNE(n_components=n_components, perplexity=perplexity, early_exaggeration=early_exaggeration,
+                          random_state=random_state, method=method, angle=angle, learning_rate=learning_rate,
+                          n_iter=n_iter, n_iter_without_progress=n_iter_without_progress, metric=metric,
+                          init=init, verbose=verbose)
 
-        plt.show()
+        if is_pca_pre:
+            print('reducing to dim 50 with PCA')
+            pca_model = PCA(n_components=pca_dim_pre)
+            pca_vector = pca_model.fit_transform(self.data)
+            x_tsne = tnse_model.fit_transform(pca_vector)
+        else:
+            x_tsne = tnse_model.fit_transform(self.data)
+
+        # plot clustering
+        if plot_tsne_results:
+            plt.figure(figsize=(10, 5))
+            plt.subplot(121)
+            plt.scatter(x_tsne[:, 0], x_tsne[:, 1])
+            plt.show()
+
         print(f'{time.asctime(time.localtime(time.time()))}: finish TSNE cluster')
 
-        return
+        return x_tsne
 
-    def gmm_cluster(self):
+    def gmm_cluster(self, n_components=10, covariance_type='full'):
+
         print(f'{time.asctime(time.localtime(time.time()))}: start GMM cluster')
-        gmm = GaussianMixture(n_components=10, covariance_type='full')
-        gmm.fit(self.embedded_submission_text['submission_embedded_body'].apply(pd.Series))
-        y_pred = gmm.predict(self.embedded_submission_text['submission_embedded_body'].apply(pd.Series))
-        final_gmm_result =\
-            pd.concat([self.embedded_submission_text[['submission_body', 'submission_id']], pd.Series(y_pred)], axis=1)
-        final_gmm_result.to_csv(os.path.join(trained_models_directory, 'new', 'gmm_results.csv'))
+
+        gmm = GaussianMixture(n_components=n_components, covariance_type=covariance_type)
+        gmm.fit(self.data)
+
+        y_pred = gmm.predict(self.data)
+
+        # final_gmm_result =\
+        #     pd.concat([self.embedded_submission_text[['submission_body', 'submission_id']], pd.Series(y_pred)], axis=1)
+        # final_gmm_result.to_csv(os.path.join(trained_models_directory, 'new', 'gmm_results.csv'))
 
         print(f'{time.asctime(time.localtime(time.time()))}: finish GMM cluster')
+
+        return y_pred
 
     def topic_model(self):
         """
