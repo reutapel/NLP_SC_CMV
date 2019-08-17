@@ -7,10 +7,6 @@ import joblib
 import pandas as pd
 import os
 
-
-base_directory = os.path.abspath(os.curdir)
-data_directory = os.path.join(base_directory, 'data')
-
 # TODO: CHANGE DIRECTORIES TO NEW REPOSITORY AND SIMPLY TO BASE DIRECTORY
 # TODO: CHANGE OBJECT TO FIT, TRANSFORM
 
@@ -167,65 +163,70 @@ class Doc2Vec:
     # TODO: create method that cleans text
     # TODO: examine evaluation results
 
-    def evaluate_self_sim(self):
+    def evaluate_self_sim(self, num_of_docs_to_test):
         """
         sanity check: method checks if the model makes a doc most similar to itself
         method prints most, second most, median and least similar vec to a doc
+        :param num_of_docs_to_test: number of top train examples to evaluate on
         :return:
         """
 
         ranks = []
         second_ranks = []
-        doc_iter = 0
-        for doc_id in range(len(self.train_corpus)):
+
+        for doc_id in range(num_of_docs_to_test):
+            # create embedding
             inferred_vector = self.doc2vec_model.infer_vector(self.train_corpus[doc_id].words)
+            # rank similarity
             sims = self.doc2vec_model.docvecs.most_similar([inferred_vector], topn=len(self.doc2vec_model.docvecs))
             rank = [docid for docid, sim in sims].index(doc_id)
             ranks.append(rank)
             second_ranks.append(sims[1])
-            if doc_iter % 500000 == 0:
-                print('Document ({}): «{}»\n'.format(doc_id, ' '.join(self.train_corpus[doc_id].words)))
-                print(u'SIMILAR/DISSIMILAR DOCS PER MODEL %s:\n' % self.doc2vec_model)
-                for label, index in [('MOST', 0), ('SECOND-MOST', 1),
-                                     ('MEDIAN', len(sims) // 2), ('LEAST', len(sims) - 1)]:
-                    print(u'%s %s: «%s»\n' % (label, sims[index], ' '.join(self.train_corpus[sims[index][0]].words)))
-            doc_iter += 1
+
+            print('Document ({}): «{}»\n'.format(doc_id, ' '.join(self.train_corpus[doc_id].words)))
+            print(u'SIMILAR/DISSIMILAR DOCS PER MODEL %s:\n' % self.doc2vec_model)
+            for label, index in [('MOST', 0), ('SECOND-MOST', 1),
+                                 ('MEDIAN', len(sims) // 2), ('LEAST', len(sims) - 1)]:
+                print(u'%s %s: «%s»\n' % (label, sims[index], ' '.join(self.train_corpus[sims[index][0]].words)))
+
 
         print("now let's see if the docs are most similar to themselves: ", collections.Counter(ranks))
 
 
-def main():
-
-    # start logging - redirects print to log file
-    old_stdout = sys.stdout
-    log_file = open("doc2vec.log", "w")
-    sys.stdout = log_file
-
-    # text file
-    linux = 0
-    if linux:
-        csv = "change_my_view/all_submissions_comments_with_label_all_deltalog_final.csv"
-    else:
-        csv = os.path.join(data_directory, 'comment_body.csv')
-
-    # create object
-    doc2vec = Doc2Vec(csv, linux, 50, 2, 30)
-
-    # test embedded vector
-    test = "I going to show you a baby. Aalive and health"
-    vec_test = doc2vec.infer_doc_vector(test)
-    print("vec test is", vec_test)
-
-    # evaluate model performance
-    doc2vec.evaluate_self_sim()
-
-    print(time.asctime(time.localtime(time.time())), ": saving doc2vec object ")
-    joblib.dump(doc2vec, "doc2vec.pkl")
-
-    # close logging
-    sys.stdout = old_stdout
-    log_file.close()
-
-
-if __name__ == '__main__':
-    main()
+# def main():
+#
+# base_directory = os.path.abspath(os.curdir)
+# data_directory = os.path.join(base_directory, 'data')
+#     # start logging - redirects print to log file
+#     old_stdout = sys.stdout
+#     log_file = open("doc2vec.log", "w")
+#     sys.stdout = log_file
+#
+#     # text file
+#     linux = 0
+#     if linux:
+#         csv = "change_my_view/all_submissions_comments_with_label_all_deltalog_final.csv"
+#     else:
+#         csv = os.path.join(data_directory, 'comment_body.csv')
+#
+#     # create object
+#     doc2vec = Doc2Vec(csv, linux, 50, 2, 30)
+# #
+#     # test embedded vector
+#     test = "I going to show you a baby. Aalive and health"
+#     vec_test = doc2vec.infer_doc_vector(test)
+#     print("vec test is", vec_test)
+#
+#     # evaluate model performance
+#     doc2vec.evaluate_self_sim()
+#
+#     print(time.asctime(time.localtime(time.time())), ": saving doc2vec object ")
+#     joblib.dump(doc2vec, "doc2vec.pkl")
+#
+#     # close logging
+#     sys.stdout = old_stdout
+#     log_file.close()
+#
+#
+# if __name__ == '__main__':
+#     main()
