@@ -87,7 +87,7 @@ class RemoveCommentsFromData:
             ['[deleted]', '[removed]', 'b', '...', '-']))]
         print('4:', self.submissions.shape)
 
-        # filter submission body less than 3 char
+        # filter submission body less than 1 char
         self.submissions = self.submissions.loc[(self.submissions['submission_body'].str.len() > 1)]
         print('5:', self.submissions.shape)
 

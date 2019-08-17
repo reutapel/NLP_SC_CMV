@@ -157,7 +157,7 @@ class CreateFeatures:
         self.train_data_term_matrix = None
         self.lda_model = None
         self.doc2vec_model = None
-        self.doc2vec_vector_size = 200
+        self.doc2vec_vector_size = 150
         self.submission_comments_dict = None
         self.branch_comments_dict = None
         self.submission_data_dict = dict()
@@ -366,6 +366,7 @@ class CreateFeatures:
 
             # create and train doc2vec model
             doc2vec_fitted_model_file_path = os.path.join(trained_models_dir, 'doc2vec_model.pkl')
+            print(f'doc2vec_fitted_model_file_path: {doc2vec_fitted_model_file_path}')
             if not os.path.isfile(doc2vec_fitted_model_file_path):
                 print('{}: Create and train Doc2Vec model on {}'.format((time.asctime(time.localtime(time.time()))),
                                                                         self.data_file_name))
@@ -374,6 +375,7 @@ class CreateFeatures:
                 comments_body = self.all_data['comment_body']
                 train_data_doc2vec = submission_body.append(comments_body, ignore_index=True)
                 train_data_doc2vec = pd.Series(train_data_doc2vec.unique())
+                print(f'train_data_doc2vec shape: {train_data_doc2vec.shape}')
                 self.doc2vec_model = Doc2Vec(fname='', linux=False, use_file=False, data=train_data_doc2vec,
                                              vector_size=self.doc2vec_vector_size)
                 joblib.dump(self.doc2vec_model, doc2vec_fitted_model_file_path)
@@ -1284,7 +1286,7 @@ def split_data_and_run(data_type: str, create_features: CreateFeatures, split_nu
               format((time.asctime(time.localtime(time.time()))), data_type, group_id))
         logging.info('Start loading {} data, group number {}'.format(data_type, group_id))
 
-        create_features.create_data(data_type + '_' + str(group_id), is_train=False, data=data_set)
+        create_features.create_data(data_type + '_' + str(group_id), is_train=True, data=data_set)
         print('{}: Finish loading the data, start create features'.
               format((time.asctime(time.localtime(time.time())))))
         print('data sizes: {} data, group number {}: {}'.format(data_type, group_id, create_features.data.shape))
@@ -1351,11 +1353,12 @@ def not_parallel_main():
 
 
 @ray.remote
-def execute_parallel(data_set, data_type: str):
+def execute_parallel(data_set, data_type: str, load_data: bool=False):
     """
     This function run the process of creating features in parallel
     :param data_set: directory to read the data from
     :param data_type: which data we use- train/test/val
+    :param load_data: if to load all train data and train the models
     :return:
     """
     log_file_name = os.path.join(log_directory, datetime.now().strftime(
@@ -1376,7 +1379,7 @@ def execute_parallel(data_set, data_type: str):
     logging.info('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
     # load_data to be False if we already have the trained model and we don't need to load the train data
     trained_models_dir = os.path.join(train_test_data_directory, 'split_data', data_set, 'trained_models')
-    create_features.create_data('train', is_train=True, load_data=True, trained_models_dir=trained_models_dir)
+    create_features.create_data('train', is_train=True, load_data=load_data, trained_models_dir=trained_models_dir)
 
     print('{}: Start run data set {}'.format((time.asctime(time.localtime(time.time()))), data_set))
     logging.info('Start run data set {}'.format(data_set))
@@ -1434,7 +1437,11 @@ def parallel_main():
     return
 
 
-def manual_parallel_main():
+def manual_parallel_main(load_data):
+    """
+    :param load_data: if to load all train data and train the models
+    :return:
+    """
     data_set = sys.argv[2]
     print(f'Running on {data_set}')
     logging.info('Running on {}'.format(data_set))
@@ -1458,7 +1465,7 @@ def manual_parallel_main():
     trained_models_dir = os.path.join(train_test_data_directory, 'split_data', data_set, 'trained_models')
     curr_data_directory = os.path.join(train_test_data_directory, 'split_data', data_set)
 
-    create_features.create_data('train', is_train=True, load_data=False, trained_models_dir=trained_models_dir,
+    create_features.create_data('train', is_train=True, load_data=load_data, trained_models_dir=trained_models_dir,
                                 data_dir=curr_data_directory)
 
     features_dir_path = os.path.join(features_directory, data_set)
@@ -1489,17 +1496,22 @@ if __name__ == '__main__':
     """
     sys.argv[1] = main_func
     sys.argv[2] = data_dir / data_type to run in ray
+    sys.argv[3] = load_data
     """
     main_func = sys.argv[1]
     print(f'Start run {main_func}')
     logging.info('Start run {}'.format(main_func))
+    load_data = sys.argv[3]
+    print(f'load_data: {load_data}')
+    if load_data == 'False':
+        load_data = False
 
     if main_func == 'parallel_main':
         parallel_main()
     elif main_func == 'not_parallel_main':
         not_parallel_main()
     elif main_func == 'manual_parallel_main':
-        manual_parallel_main()
+        manual_parallel_main(load_data)
     else:
         print(f'{main_func} is not main function in this code')
         logging.info('{} is not main function in this code'.format(main_func))

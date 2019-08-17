@@ -115,6 +115,9 @@ class CalculateStatistics:
 
         self.statistics_columns = ['branch_length', 'delta_index_in_branch', 'num_comments_after_delta', 'num_delta']
 
+        if not os.path.exists(branch_statistics_directory):
+            os.makedirs(branch_statistics_directory)
+
     def calculate_statistics_hist(self, statistics_column_name, is_split=False, per_branch_length=False,
                                   branch_length=0):
         """
