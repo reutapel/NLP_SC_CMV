@@ -168,7 +168,6 @@ def clean(text):
     stop = set(stopwords.words('english'))
     exclude = set(string.punctuation)
     lemma = WordNetLemmatizer()
-
     text = text.lstrip('b').strip('"').strip("'").strip(">")
     stop_free = " ".join([i for i in text.lower().split() if i not in stop])
     punc_free = "".join(ch for ch in stop_free if ch not in exclude)

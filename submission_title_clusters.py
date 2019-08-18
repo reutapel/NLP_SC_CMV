@@ -8,47 +8,7 @@ from pytorch_transformers import *
 import datetime
 from tqdm import *
 from submissions_clusters import *
-# PyTorch-Transformers has a unified API
-# for 6 transformer architectures and 27 pretrained weights.
-# #          Model          | Tokenizer          | Pretrained weights shortcut
-# MODELS = [(BertModel,       BertTokenizer,      'bert-base-uncased'),
-#           (OpenAIGPTModel,  OpenAIGPTTokenizer, 'openai-gpt'),
-#           (GPT2Model,       GPT2Tokenizer,      'gpt2'),
-#           (TransfoXLModel,  TransfoXLTokenizer, 'transfo-xl-wt103'),
-#           (XLNetModel,      XLNetTokenizer,     'xlnet-base-cased'),
-#           (XLMModel,        XLMTokenizer,       'xlm-mlm-enfr-1024')]
-
-    # # Each architecture is provided with several class for fine-tuning on down-stream tasks, e.g.
-    # BERT_MODEL_CLASSES = [BertModel, BertForPreTraining, BertForMaskedLM, BertForNextSentencePrediction,
-    #                   BertForSequenceClassification, BertForMultipleChoice, BertForTokenClassification,
-    #                   BertForQuestionAnswering]
-    #
-    # # All the classes for an architecture can be initiated from pretrained weights for this architecture
-    # # Note that additional weights added for fine-tuning are only initialized
-    # # and need to be trained on the down-stream task
-    # tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-    # for model_class in BERT_MODEL_CLASSES:
-    #     # Load pretrained model/tokenizer
-    #     model = BertModel.from_pretrained('bert-base-uncased')
-    #
-    # # Models can return full list of hidden-states & attentions weights at each layer
-    # model = BertModel.from_pretrained('bert-base-uncased',
-    #                                     output_hidden_states=True,
-    #                                     output_attentions=True)
-    # input_ids = torch.tensor([tokenizer.encode("Let's see all hidden-states and attentions on this text")])
-    # all_hidden_states, all_attentions = model(input_ids)[-2:]
-    #
-    # # Models are compatible with Torchscript
-    # model = BertModel.from_pretrained('bert-base-uncased', torchscript=True)
-    # traced_model = torch.jit.trace(model, (input_ids,))
-    #
-    # # Simple serialization for models and tokenizers
-    # model.save_pretrained('./directory/to/save/')  # save
-    # model = BertModel.from_pretrained('./directory/to/save/')  # re-load
-    # tokenizer.save_pretrained('./directory/to/save/')  # save
-    # tokenizer = BertTokenizer.from_pretrained('./directory/to/save/')  # re-load
-    # return
-
+from bert_model import BertTransformer
 
 class SubmissionsTitleClusters:
     """ creates embedded version of submission titles and clusters them """
@@ -62,41 +22,31 @@ class SubmissionsTitleClusters:
         self.embedding_size = embedding_size
         self.doc2vec_model = None
         self.doc2vec_fitted_model_file_path = None
-        self.bert_encoded_submissions_title_df = pd.DataFrame(columns=['embedded_tokens', 'pooler'])
         self.take_bert_pooler = take_bert_pooler
+        self.poolers_df = None
+        self.bert_model = None
 
-    def bert_encoding(self, is_save=True):
+    def bert_encoding(self, is_save=False):
         """
         encode all submission titles using BERT model encoder
         :return: fills class variable df bert_encoded_submissions_title_df
         """
         # Load pretrained model/tokenizer
-        tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-        model = BertModel.from_pretrained('bert-base-uncased')
+        self.bert_model = BertTransformer(pretrained_weights_shortcut='bert-base-uncased', take_bert_pooler=True)
 
         # Encode text
         if self.take_bert_pooler:
             print('starting BERT encoding', datetime.datetime.now())
+            poolers_list = list()
             for index, row in tqdm(self.data.iteritems(), total=self.data.shape[0]):
-                # print(len(row.split(" ")), ' number of words')
-                # print(len(set(row.split(" "))), ' number of DISTINCT words')
-                tokenized = tokenizer.tokenize(row)
-                # print(len(tokenized), ' number of BERT tokens')
-
-                # add dummy token for pooler - sum of sentence
-                tokenized.insert(0, 'CLS')
-                input_ids = tokenizer.convert_tokens_to_ids(tokenized)
-                # print(len(input_ids), ' number of BERT ids')
-                # print('first BERT id for CLS dummy token is: ', input_ids[0])
-                # input_ids = torch.tensor([tokenizer.encode(row)])
-                with torch.no_grad():
-                    pooler = model(torch.tensor([input_ids]))[0][0][0]
-                    # print(pooler)
-                    self.bert_encoded_submissions_title_df.loc[index, 'pooler'] = pooler
+                # pooler = self.bert_model.bert_text_encoding(row, take_bert_pooler=True)
+                pooler = self.bert_model.get_text_average_pooler(row, max_size=450)
+                poolers_list.append(pd.Series(pooler))
+            self.poolers_df = pd.DataFrame(poolers_list)
             print('finished BERT encoding', datetime.datetime.now())
             if is_save:
                 print('saving BERT embedded df')
-                joblib.dump(self.bert_encoded_submissions_title_df, 'self.bert_encoded_submissions_title_df.pickle')
+                joblib.dump(self.poolers_df, 'bert_poolers_df.pickle')
         return
 
     def doc2vec_embedding(self, min_count=2, epochs=200):
@@ -152,9 +102,9 @@ def main():
         pd.Series(all_train_data_submission_title_unique).apply(lambda x: x[5:] if x.startswith('CMV:') else x)
 
     # create class obj
-    sub_title_cluster_obj = SubmissionsTitleClusters(data=all_train_data_submission_title_unique, embedding_size=300,
+    sub_title_cluster_obj = SubmissionsTitleClusters(data=all_train_data_submission_title_unique.head(100), embedding_size=300,
                                                      data_directory=data_directory, take_bert_pooler=True)
-    sub_title_cluster_obj.describe_data()
+    # sub_title_cluster_obj.describe_data()
 
     # encode
     # sub_title_cluster_obj.doc2vec_embedding(min_count=2, epochs=1000)
@@ -166,8 +116,7 @@ def main():
     # sub_title_cluster_obj.doc2vec_model.evaluate_self_sim(num_of_docs_to_test)
 
     # cluster embedded data
-    submissions_clusters_obj = SubmissionsClusters(sub_title_cluster_obj.bert_encoded_submissions_title_df.loc[:,
-                                                   'pooler'])
+    submissions_clusters_obj = SubmissionsClusters(sub_title_cluster_obj.poolers_df)
 
     submission_title_bert_embedded_x_tsne = submissions_clusters_obj.tsne_cluster()
     joblib.dump(submission_title_bert_embedded_x_tsne, 'submission_title_bert_embedded_x_tsne.pickle')
