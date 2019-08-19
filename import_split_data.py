@@ -11,6 +11,8 @@ class ImportSplitData:
     def __init__(self):
 
         self.folder_list = os.listdir(os.path.join(os.getcwd(), 'features_to_use'))
+        print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} self.folder_list {self.folder_list}')
+
         self.data_folders_dict = defaultdict(list)
         self.all_data_dict = defaultdict(dict)
 
@@ -20,12 +22,14 @@ class ImportSplitData:
     def collect_data_folders(self):
         # get names of all data folders
         for folder in self.folder_list:
-            if folder[-6:-1] == 'train':
+            if folder[0:5] == 'train':
                 self.data_folders_dict['train'].append(folder)
-            elif folder[-6:-1] == 'testi':
+            elif folder[0:5] == 'testi':
                 self.data_folders_dict['testi'].append(folder)
-            elif folder[-6:-1] == 'valid':
+            elif folder[0:5] == 'valid':
                 self.data_folders_dict['valid'].append(folder)
+
+        print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} self.data_folders_dict {self.data_folders_dict}')
 
     def load_join_data(self):
         # collect all files by folder
