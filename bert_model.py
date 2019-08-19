@@ -56,9 +56,9 @@ class BertTransformer:
                 print('finished BERT encoding', datetime.datetime.now())
                 return tokens_embedding
 
-    def average_vectors(self, tensors_list):
+    def average_vectors(self, vectors_list):
         """ assumes tensors are in the same dimensions"""
-        return np.mean(tensors_list, axis=0)
+        return np.mean(vectors_list, axis=0)
 
     def split_text_by_max_size(self, text, max_size):
         """
