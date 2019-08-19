@@ -489,7 +489,7 @@ def main():
     delta_log = 'DeltaLog'
     OP_deltas_comments_ids_deltalog = connect.get_deltas_log(delta_log)
 
-    #create label
+    # create label
     df_name = "all_submissions_comments_with_label.csv"
     all_submissions_comments_with_label = connect.create_label(all_submissions_comments,
                                                                OP_deltas_comments_ids_deltalog, OP_deltas_comments_ids,
@@ -498,7 +498,7 @@ def main():
     connect.complete_deltas_from_log_not_in_data(OP_deltas_comments_ids_deltalog, all_submissions_comments_with_label)
 
     # get all submissions data final
-    #connect.get_all_submissions_final_data()
+    # connect.get_all_submissions_final_data()
 
 
 if __name__ == '__main__':
