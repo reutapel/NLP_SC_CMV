@@ -36,14 +36,14 @@ class SubmissionsTitleClusters:
 
         # Encode text
         if self.take_bert_pooler:
-            print('starting BERT encoding', datetime.datetime.now())
+            # print('starting BERT encoding', datetime.datetime.now())
             poolers_list = list()
             for index, row in tqdm(self.data.iteritems(), total=self.data.shape[0]):
                 # pooler = self.bert_model.bert_text_encoding(row, take_bert_pooler=True)
                 pooler = self.bert_model.get_text_average_pooler(row, max_size=450)
                 poolers_list.append(pd.Series(pooler))
             self.poolers_df = pd.DataFrame(poolers_list)
-            print('finished BERT encoding', datetime.datetime.now())
+            # print('finished BERT encoding', datetime.datetime.now())
             if is_save:
                 print('saving BERT embedded df')
                 joblib.dump(self.poolers_df, 'bert_poolers_df.pickle')
@@ -102,26 +102,114 @@ def main():
         pd.Series(all_train_data_submission_title_unique).apply(lambda x: x[5:] if x.startswith('CMV:') else x)
 
     # create class obj
-    sub_title_cluster_obj = SubmissionsTitleClusters(data=all_train_data_submission_title_unique.head(100), embedding_size=300,
+    sub_title_cluster_obj = SubmissionsTitleClusters(data=all_train_data_submission_title_unique,
+                                                     embedding_size=300,
                                                      data_directory=data_directory, take_bert_pooler=True)
-    # sub_title_cluster_obj.describe_data()
+    sub_title_cluster_obj.describe_data()
 
     # encode
     # sub_title_cluster_obj.doc2vec_embedding(min_count=2, epochs=1000)
     sub_title_cluster_obj.bert_encoding(is_save=True)
-
-    # # evaluate embedding
-    # # define number of doc to test doc2vec embedding
+    # poolers_df = joblib.load('bert_poolers_df.pickle')
+    # evaluate embedding
+    # define number of doc to test doc2vec embedding
     # num_of_docs_to_test = 5
     # sub_title_cluster_obj.doc2vec_model.evaluate_self_sim(num_of_docs_to_test)
 
     # cluster embedded data
     submissions_clusters_obj = SubmissionsClusters(sub_title_cluster_obj.poolers_df)
 
-    submission_title_bert_embedded_x_tsne = submissions_clusters_obj.tsne_cluster()
+    submission_title_bert_embedded_x_tsne_with_pca = submissions_clusters_obj.tsne_dim_reduce(plot_tsne_results=True,
+                                                                                  is_pca_pre=True, pca_dim_pre=50,
+                                                                                  n_components=2, perplexity=30.0,
+                                                                                  early_exaggeration=4.0, random_state=0
+                                                                                  , method='barnes_hut', angle=0.5,
+                                                                                  learning_rate=1000, n_iter=1000,
+                                                                                  n_iter_without_progress=30,
+                                                                                  metric='euclidean', init='pca',
+                                                                                  verbose=0)
+
+    submission_title_bert_embedded_x_tsne = submissions_clusters_obj.tsne_dim_reduce(plot_tsne_results=True,
+                                                                                  is_pca_pre=False, pca_dim_pre=50,
+                                                                                  n_components=2, perplexity=30.0,
+                                                                                  early_exaggeration=4.0, random_state=0
+                                                                                  , method='barnes_hut', angle=0.5,
+                                                                                  learning_rate=1000, n_iter=1000,
+                                                                                  n_iter_without_progress=30,
+                                                                                  metric='euclidean', init='pca',
+                                                                                  verbose=0)
+
+    submission_title_bert_embedded_x_umap = submissions_clusters_obj.umap_dim_reduce(n_neighbors=30, min_dist=0.0,
+                                                                                     n_components=2, random_state=42)
+
     joblib.dump(submission_title_bert_embedded_x_tsne, 'submission_title_bert_embedded_x_tsne.pickle')
-    submission_title_bert_embedded_y_gmm = submissions_clusters_obj.gmm_cluster()
-    joblib.dump(submission_title_bert_embedded_y_gmm, 'submission_title_bert_embedded_y_gmm.pickle')
+    joblib.dump(submission_title_bert_embedded_x_tsne_with_pca, 'submission_title_bert_embedded_x_tsne_with_pca.pickle')
+    joblib.dump(submission_title_bert_embedded_x_umap, 'submission_title_bert_embedded_x_umap.pickle')
+
+    # GMM clustering on different embeddings
+    submission_title_bert_embedded_poolers_y_gmm = submissions_clusters_obj.gmm_cluster(
+        sub_title_cluster_obj.poolers_df, n_components=10, covariance_type='full')
+    submission_title_bert_embedded_tsne_with_pca_y_gmm = submissions_clusters_obj.gmm_cluster(
+        submission_title_bert_embedded_x_tsne_with_pca, n_components=10, covariance_type='full')
+    submission_title_bert_embedded_tsne_y_gmm = submissions_clusters_obj.gmm_cluster(
+        submission_title_bert_embedded_x_tsne, n_components=10, covariance_type='full')
+    submission_title_bert_embedded_umap_y_gmm = submissions_clusters_obj.gmm_cluster(
+        submission_title_bert_embedded_x_umap, n_components=10, covariance_type='full')
+
+    joblib.dump(submission_title_bert_embedded_poolers_y_gmm, 'submission_title_bert_embedded_poolers_y_gmm.pickle')
+    joblib.dump(submission_title_bert_embedded_tsne_with_pca_y_gmm, 'submission_title_bert_embedded_tsne_with_pca_y_gmm.pickle')
+    joblib.dump(submission_title_bert_embedded_tsne_y_gmm, 'submission_title_bert_embedded_tsne_y_gmm.pickle')
+    joblib.dump(submission_title_bert_embedded_x_umap, 'submission_title_bert_embedded_x_umap.pickle')
+
+    # HDBSCAN clustering on different embeddings
+    submission_title_bert_embedded_poolers_y_hdbscan = submissions_clusters_obj.hdbscan_cluster(
+        sub_title_cluster_obj.poolers_df)
+    submission_title_bert_embedded_tsne_with_pca_y_hdbscan = submissions_clusters_obj.hdbscan_cluster(
+        submission_title_bert_embedded_x_tsne_with_pca)
+    submission_title_bert_embedded_tsne_y_hdbscan = submissions_clusters_obj.hdbscan_cluster(
+        submission_title_bert_embedded_x_tsne)
+    submission_title_bert_embedded_umap_y_hdbscan = submissions_clusters_obj.hdbscan_cluster(
+        submission_title_bert_embedded_x_umap)
+
+    joblib.dump(submission_title_bert_embedded_poolers_y_hdbscan, 'submission_title_bert_embedded_poolers_y_hdbscan.pickle')
+    joblib.dump(submission_title_bert_embedded_tsne_with_pca_y_hdbscan, 'submission_title_bert_embedded_tsne_with_pca_y_hdbscan.pickle')
+    joblib.dump(submission_title_bert_embedded_tsne_y_hdbscan, 'submission_title_bert_embedded_tsne_y_hdbscan.pickle')
+    joblib.dump(submission_title_bert_embedded_umap_y_hdbscan, 'submission_title_bert_embedded_umap_y_hdbscan.pickle')
+
+    print('evaluating embedding and clustering methods:')
+    # GMM
+    submissions_clusters_obj.evaluate_clusters(data=sub_title_cluster_obj.poolers_df,
+                                               cluster_labels=submission_title_bert_embedded_poolers_y_gmm,
+                                               cluster_method_name='GMM WITH BERT POOLERS EMBEDDING')
+
+    submissions_clusters_obj.evaluate_clusters(data=submission_title_bert_embedded_x_tsne_with_pca,
+                                               cluster_labels=submission_title_bert_embedded_tsne_with_pca_y_gmm,
+                                               cluster_method_name='GMM WITH TSNE WITH PCA')
+
+    submissions_clusters_obj.evaluate_clusters(data=submission_title_bert_embedded_x_tsne,
+                                               cluster_labels=submission_title_bert_embedded_tsne_y_gmm,
+                                               cluster_method_name='GMM WITH TSNE')
+
+    submissions_clusters_obj.evaluate_clusters(data=submission_title_bert_embedded_x_umap,
+                                               cluster_labels=submission_title_bert_embedded_umap_y_gmm,
+                                               cluster_method_name='GMM WITH UMAP')
+    # HDBSCAN
+    submissions_clusters_obj.evaluate_clusters(data=sub_title_cluster_obj.poolers_df,
+                                               cluster_labels=submission_title_bert_embedded_poolers_y_hdbscan,
+                                               cluster_method_name='HDBSCAN WITH BERT POOLERS EMBEDDING')
+
+    submissions_clusters_obj.evaluate_clusters(data=submission_title_bert_embedded_x_tsne_with_pca,
+                                               cluster_labels=submission_title_bert_embedded_tsne_with_pca_y_hdbscan,
+                                               cluster_method_name='HDBSCAN WITH TSNE WITH PCA')
+
+    submissions_clusters_obj.evaluate_clusters(data=submission_title_bert_embedded_x_tsne,
+                                               cluster_labels=submission_title_bert_embedded_tsne_y_hdbscan,
+                                               cluster_method_name='HDBSCAN WITH TSNE')
+
+    submissions_clusters_obj.evaluate_clusters(data=submission_title_bert_embedded_x_umap,
+                                               cluster_labels=submission_title_bert_embedded_umap_y_hdbscan,
+                                               cluster_method_name='HDBSCAN WITH UMAP')
+
 
 
 if __name__ == '__main__':
