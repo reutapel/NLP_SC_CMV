@@ -108,17 +108,19 @@ def main():
     sub_title_cluster_obj.describe_data()
 
     # encode
+    # doc2vec
     # sub_title_cluster_obj.doc2vec_embedding(min_count=2, epochs=1000)
-    sub_title_cluster_obj.bert_encoding(is_save=True)
-    # poolers_df = joblib.load('bert_poolers_df.pickle')
     # evaluate embedding
     # define number of doc to test doc2vec embedding
     # num_of_docs_to_test = 5
     # sub_title_cluster_obj.doc2vec_model.evaluate_self_sim(num_of_docs_to_test)
 
+    sub_title_cluster_obj.bert_encoding(is_save=True)
+    # for debugging
+    # poolers_df = joblib.load('bert_poolers_df.pickle')
     # cluster embedded data
     submissions_clusters_obj = SubmissionsClusters(sub_title_cluster_obj.poolers_df)
-
+    # reduce dimensions in 3 methods, tsne with pca, tsne without pca, umap
     submission_title_bert_embedded_x_tsne_with_pca = submissions_clusters_obj.tsne_dim_reduce(plot_tsne_results=True,
                                                                                   is_pca_pre=True, pca_dim_pre=50,
                                                                                   n_components=2, perplexity=30.0,
@@ -146,6 +148,7 @@ def main():
     joblib.dump(submission_title_bert_embedded_x_tsne_with_pca, 'submission_title_bert_embedded_x_tsne_with_pca.pickle')
     joblib.dump(submission_title_bert_embedded_x_umap, 'submission_title_bert_embedded_x_umap.pickle')
 
+    # cluster in
     # GMM clustering on different embeddings
     submission_title_bert_embedded_poolers_y_gmm = submissions_clusters_obj.gmm_cluster(
         sub_title_cluster_obj.poolers_df, n_components=10, covariance_type='full')
@@ -170,13 +173,20 @@ def main():
         submission_title_bert_embedded_x_tsne)
     submission_title_bert_embedded_umap_y_hdbscan = submissions_clusters_obj.hdbscan_cluster(
         submission_title_bert_embedded_x_umap)
-
+    # todo: try also OPTICS algorithm for clustering:
+    #  https://scikit-learn.org/stable/auto_examples/cluster/plot_optics.html#sphx-glr-auto-examples-cluster-plot-optics-py
     joblib.dump(submission_title_bert_embedded_poolers_y_hdbscan, 'submission_title_bert_embedded_poolers_y_hdbscan.pickle')
     joblib.dump(submission_title_bert_embedded_tsne_with_pca_y_hdbscan, 'submission_title_bert_embedded_tsne_with_pca_y_hdbscan.pickle')
     joblib.dump(submission_title_bert_embedded_tsne_y_hdbscan, 'submission_title_bert_embedded_tsne_y_hdbscan.pickle')
     joblib.dump(submission_title_bert_embedded_umap_y_hdbscan, 'submission_title_bert_embedded_umap_y_hdbscan.pickle')
 
     print('evaluating embedding and clustering methods:')
+    print('silhouette_score- NOTE boundeed between -1 to 1, higher is better, 0 is overlapping clusters, biased for convex ' 
+    'clusters and not density based like DBSCAN'
+    ' calinski_harabasz_score-NOTE higher is better, biased for convex clusters and not density based like DBSCAN '
+    'davies_bouldin_score -NOTE average Euclidean distance within cluster/ between centroids ratio within the closer to' 
+    ' 0 the better, biased for convex clusters and not density based like DBSCAN, and limited to Euclidean only')
+    # evaluate clustering
     # GMM
     submissions_clusters_obj.evaluate_clusters(data=sub_title_cluster_obj.poolers_df,
                                                cluster_labels=submission_title_bert_embedded_poolers_y_gmm,

@@ -172,26 +172,15 @@ class SubmissionsClusters:
         # metrics.pairwise.pairwise_distances
         print('evaluating ', cluster_method_name)
         silhouette_score_euc = metrics.silhouette_score(data, cluster_labels, metric='euclidean')
-        print('silhouette_score euclidean is: ', str(silhouette_score_euc))#, ' - NOTE boundeed between -1 to 1, higher is better, 0 is'
-                                                              # 'overlapping clusters, biased for convex clusters and '
-                                                              # 'not density based like DBSCAN')
+        print('silhouette_score euclidean is: ', str(silhouette_score_euc))
         silhouette_score_cos = metrics.silhouette_score(data, cluster_labels, metric='cosine')
-        print('silhouette_score cosine is: ', str(silhouette_score_cos))#, ' - NOTE boundeed between -1 to 1, higher is better, 0 is'
-                                                              # 'overlapping clusters, biased for convex clusters and '
-                                                              # 'not density based like DBSCAN')
+        print('silhouette_score cosine is: ', str(silhouette_score_cos))
 
         calinski_harabasz_score = metrics.calinski_harabasz_score(data, cluster_labels)
-        print('calinski_harabasz_score (aka variance-ratio) is: ', str(calinski_harabasz_score))#, ' -NOTE higher is '
-                                                                            #                      'better, biased'
-                                                                            # ' for convex clusters and not '
-                                                                            # 'density based like DBSCAN')
+        print('calinski_harabasz_score (aka variance-ratio) is: ', str(calinski_harabasz_score))
 
         davies_bouldin_score = metrics.davies_bouldin_score(data, cluster_labels)
-        print('davies_bouldin_score is: ', str(davies_bouldin_score))#, ' -NOTE average Euclidean distance within cluster'
-                                                                      # '/ between centroids ratio within the closer to 0'
-                                                                      # ' the better, biased for convex clusters and not '
-                                                                      # 'density based like DBSCAN, and limited to '
-                                                                      # 'Euclidean only')
+        print('davies_bouldin_score is: ', str(davies_bouldin_score))
 
         return
 
