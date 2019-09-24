@@ -86,6 +86,7 @@ class CalculateStatistics:
         self.statistics = pd.DataFrame(columns=['mean', 'STD', 'median', 'sum', 'count', 'min', 'max'])
         self.branch_numbers_df = pd.read_csv(os.path.join(
             save_data_directory, 'comments_label_branch_info_after_remove.csv'))
+
         self.branch_numbers_df = self.branch_numbers_df.drop_duplicates(subset='branch_id')
         self.branch_numbers_df = self.branch_numbers_df[['branch_id', 'branch_length', 'num_delta',
                                                          'num_comments_after_delta', 'delta_index_in_branch',
@@ -94,6 +95,12 @@ class CalculateStatistics:
             pd.read_csv(os.path.join(save_data_directory, data_set + '.csv'),
                         usecols=['branch_id', 'comment_id', 'comment_real_depth', 'delta', 'submission_id',
                                  'comment_author', 'comment_is_submitter', 'comment_body'])
+        self.branch_comments_info_df['total_words'] = [len(x.split()) for x in
+                                                       self.branch_comments_info_df['comment_body'].tolist()]
+
+        self.submissions = pd.read_csv(os.path.join(save_data_directory, 'all_submissions_final_after_remove.csv'))
+        self.submissions['total_words_body'] = [len(x.split()) for x in self.submissions['submission_body'].tolist()]
+        self.submissions['total_words_title'] = [len(x.split()) for x in self.submissions['submission_title'].tolist()]
 
         # select relevant branches
         branches_to_use = self.branch_comments_info_df.branch_id.unique()
@@ -117,6 +124,34 @@ class CalculateStatistics:
 
         if not os.path.exists(branch_statistics_directory):
             os.makedirs(branch_statistics_directory)
+
+    def submissions_title_body_statistics(self):
+        for column in ['total_words_title', 'total_words_body']:
+            submission_body_title_length = pd.DataFrame({'mean': self.submissions[column].mean(),
+                                                         'STD': self.submissions[column].std(),
+                                                         'median': self.submissions[column].median(),
+                                                         'min': self.submissions[column].min(),
+                                                         'max': self.submissions[column].max()},
+                                                        index=[column])
+
+        submission_body_title_length.to_csv(os.path.join(branch_statistics_directory, 'submission_body_title_length.csv'))
+
+        return
+
+    def comment_body_statistics(self):
+        column = 'total_words'
+        comment_body_length = pd.DataFrame({'mean': self.branch_comments_info_df[column].mean(),
+                                            'STD': self.branch_comments_info_df[column].std(),
+                                            'median': self.branch_comments_info_df[column].median(),
+                                            'sum': self.branch_comments_info_df[column].sum(),
+                                            'count': self.branch_comments_info_df[column].count(),
+                                            'min': self.branch_comments_info_df[column].min(),
+                                            'max': self.branch_comments_info_df[column].max()},
+                                           index=[column])
+
+        comment_body_length.to_csv(os.path.join(branch_statistics_directory, 'comment_body_length.csv'))
+
+        return
 
     def calculate_statistics_hist(self, statistics_column_name, is_split=False, per_branch_length=False,
                                   branch_length=0):
@@ -285,6 +320,8 @@ def main():
     calculate_statistics_obj = CalculateStatistics()
     calculate_statistics_obj.index_delta_per_comment()
     calculate_statistics_obj.index_delta_branch_length()
+    calculate_statistics_obj.submissions_title_body_statistics()
+    calculate_statistics_obj.comment_body_statistics()
 
     # for each column calculate statistics and create histogram with and without split to delta and no delta
     for statistic_column in calculate_statistics_obj.statistics_columns:

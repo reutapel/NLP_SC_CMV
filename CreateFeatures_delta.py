@@ -69,11 +69,12 @@ class CreateFeatures:
     """
     This class will build the features for each unit: comment and its submission
     """
-    def __init__(self, number_of_topics, max_branch_length=None):
+    def __init__(self, number_of_topics, max_branch_length=None, doc2vec_vector_size=50):
         """
         Load data and pre process
         :param int number_of_topics: number_of_topics for topic model feature
         :param int max_branch_length: if there is a specific max_branch_length
+        :param int doc2vec_vector_size: the size of each doc2vec vector
         """
 
         self.is_train = None
@@ -157,7 +158,7 @@ class CreateFeatures:
         self.train_data_term_matrix = None
         self.lda_model = None
         self.doc2vec_model = None
-        self.doc2vec_vector_size = 150
+        self.doc2vec_vector_size = doc2vec_vector_size
         self.submission_comments_dict = None
         self.branch_comments_dict = None
         self.submission_data_dict = dict()
@@ -1297,7 +1298,7 @@ def split_data_and_run(data_type: str, create_features: CreateFeatures, split_nu
     return
 
 
-def not_parallel_main():
+def not_parallel_main(doc2vec_vector_size):
     data_to_create_features = ['train']
     log_file_name = os.path.join(log_directory, datetime.now().strftime(
                                     f'LogFile_create_features_delta_{data_to_create_features}_%d_%m_%Y_%H_%M_%S.log'))
@@ -1310,7 +1311,7 @@ def not_parallel_main():
     split_number = 10
     print('{}: Create object'.format((time.asctime(time.localtime(time.time())))))
     logging.info('Create object')
-    create_features = CreateFeatures(topics_number)
+    create_features = CreateFeatures(topics_number, doc2vec_vector_size=doc2vec_vector_size)
 
     print('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
     logging.info('Loading train data')
@@ -1373,7 +1374,7 @@ def execute_parallel(data_set, data_type: str, load_data: bool=False):
     print('{}: Create object'.format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Create object'.format((time.asctime(time.localtime(time.time())))))
     inner_max_branch_length = max_branch_length_dict[data_type]
-    create_features = CreateFeatures(topics_number, inner_max_branch_length)
+    create_features = CreateFeatures(topics_number, inner_max_branch_length, doc2vec_vector_size=doc2vec_vector_size)
 
     print('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
@@ -1437,7 +1438,7 @@ def parallel_main():
     return
 
 
-def manual_parallel_main(load_data):
+def manual_parallel_main(load_data, doc2vec_vector_size):
     """
     :param load_data: if to load all train data and train the models
     :return:
@@ -1457,7 +1458,7 @@ def manual_parallel_main(load_data):
     print('{}: Create object'.format((time.asctime(time.localtime(time.time())))))
     logging.info('Create object')
     inner_max_branch_length = max_branch_length_dict[data_set[:5]]
-    create_features = CreateFeatures(topics_number, inner_max_branch_length)
+    create_features = CreateFeatures(topics_number, inner_max_branch_length, doc2vec_vector_size=doc2vec_vector_size)
 
     print('{}: Loading train data or fitted models'.format((time.asctime(time.localtime(time.time())))))
     logging.info('Loading train data or fitted models')
@@ -1497,6 +1498,7 @@ if __name__ == '__main__':
     sys.argv[1] = main_func
     sys.argv[2] = data_dir / data_type to run in ray
     sys.argv[3] = load_data
+    sys.argv[4] = doc2vec_vector_size
     """
     main_func = sys.argv[1]
     print(f'Start run {main_func}')
@@ -1506,12 +1508,14 @@ if __name__ == '__main__':
     if load_data == 'False':
         load_data = False
 
+    doc2vec_vector_size = int(sys.argv[4])
+
     if main_func == 'parallel_main':
         parallel_main()
     elif main_func == 'not_parallel_main':
-        not_parallel_main()
+        not_parallel_main(doc2vec_vector_size)
     elif main_func == 'manual_parallel_main':
-        manual_parallel_main(load_data)
+        manual_parallel_main(load_data, doc2vec_vector_size)
     else:
         print(f'{main_func} is not main function in this code')
         logging.info('{} is not main function in this code'.format(main_func))
