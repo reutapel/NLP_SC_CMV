@@ -62,7 +62,7 @@ class BertTransformer:
 
     def split_text_by_max_size(self, text, max_size):
         """
-        splits text to parts built from complete sentences , wheres part is maximum max_size number of words
+        splits text to parts built from complete sentences, wheres part is maximum max_size number of words
         :param text:
         :param max_size:
         :return: list of parts of text
