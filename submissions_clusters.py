@@ -12,7 +12,9 @@ from nltk.stem.wordnet import WordNetLemmatizer
 import string
 import gensim
 from gensim.sklearn_api import ldamodel
-
+from sklearn import metrics
+import umap
+import hdbscan
 
 base_directory = os.path.abspath(os.curdir)
 # base_directory = os.path.join(base_directory, 'to_server')
@@ -67,14 +69,20 @@ class SubmissionsClusters:
                                                              'embedded_submission_text.pkl'))
         print(f'{time.asctime(time.localtime(time.time()))}: finish creating embedded data')
 
-    def tsne_cluster(self, plot_tsne_results=True, is_pca_pre=True, pca_dim_pre=50, n_components=2, perplexity=30.0,
+    def umap_dim_reduce(self, n_neighbors=30, min_dist=0.0, n_components=2, random_state=42):
+
+        x_umap = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist, n_components=n_components,
+                           random_state=random_state).fit_transform(self.data)
+        return x_umap
+
+    def tsne_dim_reduce(self, plot_tsne_results=True, is_pca_pre=True, pca_dim_pre=50, n_components=2, perplexity=30.0,
                      early_exaggeration=4.0, random_state=0, method='barnes_hut', angle=0.5, learning_rate=1000,
                      n_iter=1000, n_iter_without_progress=30, metric='euclidean', init='pca', verbose=0):
 
         # perplexity - denotes the effective number of neighbors every example has range[5-50],
         # early_exaggeration - how spaced you want the clusters to be
         # learning rate - kl-divergance is non convex, with gradient descent no guarantee for non local minima
-        print(f'{time.asctime(time.localtime(time.time()))}: start TSNE cluster')
+        print(f'{time.asctime(time.localtime(time.time()))}: start TSNE dimensionality reduction')
 
         # declare TSNE model
         tnse_model = TSNE(n_components=n_components, perplexity=perplexity, early_exaggeration=early_exaggeration,
@@ -97,18 +105,18 @@ class SubmissionsClusters:
             plt.scatter(x_tsne[:, 0], x_tsne[:, 1])
             plt.show()
 
-        print(f'{time.asctime(time.localtime(time.time()))}: finish TSNE cluster')
+        print(f'{time.asctime(time.localtime(time.time()))}: finish TSNE dimensionality reduction')
 
         return x_tsne
 
-    def gmm_cluster(self, n_components=10, covariance_type='full'):
+    def gmm_cluster(self, data, n_components=10, covariance_type='full'):
 
         print(f'{time.asctime(time.localtime(time.time()))}: start GMM cluster')
 
         gmm = GaussianMixture(n_components=n_components, covariance_type=covariance_type)
-        gmm.fit(self.data)
+        gmm.fit(data)
 
-        y_pred = gmm.predict(self.data)
+        cluster_labels = gmm.predict(data)
 
         # final_gmm_result =\
         #     pd.concat([self.embedded_submission_text[['submission_body', 'submission_id']], pd.Series(y_pred)], axis=1)
@@ -116,7 +124,11 @@ class SubmissionsClusters:
 
         print(f'{time.asctime(time.localtime(time.time()))}: finish GMM cluster')
 
-        return y_pred
+        return cluster_labels
+
+    def hdbscan_cluster(self, data):
+        cluster_labels = hdbscan.HDBSCAN().fit_predict(data)
+        return cluster_labels
 
     def topic_model(self):
         """
@@ -155,6 +167,22 @@ class SubmissionsClusters:
         print('{}: Finish topic model'.format((time.asctime(time.localtime(time.time())))))
 
         return topic_model_final_result
+
+    def evaluate_clusters(self, data, cluster_labels, cluster_method_name):
+        # metrics.pairwise.pairwise_distances
+        print('evaluating ', cluster_method_name)
+        silhouette_score_euc = metrics.silhouette_score(data, cluster_labels, metric='euclidean')
+        print('silhouette_score euclidean is: ', str(silhouette_score_euc))
+        silhouette_score_cos = metrics.silhouette_score(data, cluster_labels, metric='cosine')
+        print('silhouette_score cosine is: ', str(silhouette_score_cos))
+
+        calinski_harabasz_score = metrics.calinski_harabasz_score(data, cluster_labels)
+        print('calinski_harabasz_score (aka variance-ratio) is: ', str(calinski_harabasz_score))
+
+        davies_bouldin_score = metrics.davies_bouldin_score(data, cluster_labels)
+        print('davies_bouldin_score is: ', str(davies_bouldin_score))
+
+        return
 
 
 def clean(text):
