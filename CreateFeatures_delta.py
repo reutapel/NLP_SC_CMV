@@ -23,6 +23,7 @@ import joblib
 import sys
 import ray
 import re
+import bert_model
 # from gensim import corpora
 # from nltk.stem import PorterStemmer
 # from nltk.tokenize import sent_tokenize, word_tokenize
@@ -69,7 +70,7 @@ class CreateFeatures:
     """
     This class will build the features for each unit: comment and its submission
     """
-    def __init__(self, number_of_topics, max_branch_length=None, doc2vec_vector_size=50):
+    def __init__(self, number_of_topics, max_branch_length=None, doc2vec_vector_size=50, use_bert=True):
         """
         Load data and pre process
         :param int number_of_topics: number_of_topics for topic model feature
@@ -80,6 +81,9 @@ class CreateFeatures:
         self.is_train = None
         self.data_file_name = None
         self.number_of_topics = number_of_topics
+
+        if len(sys.argv) > 5:
+            use_bert = sys.argv[5]
 
         # Load branches data
         branch_columns = ['branch_id', 'num_delta', 'submission_id', 'branch_length', 'delta_index_in_branch',
@@ -159,6 +163,9 @@ class CreateFeatures:
         self.lda_model = None
         self.doc2vec_model = None
         self.doc2vec_vector_size = doc2vec_vector_size
+        self.bert_model = None
+        self.use_bert = use_bert
+        self.bert_vector_size = 768
         self.submission_comments_dict = None
         self.branch_comments_dict = None
         self.submission_data_dict = dict()
@@ -366,27 +373,31 @@ class CreateFeatures:
                 self.lda_model = joblib.load(lda_fitted_model_file_path)
 
             # create and train doc2vec model
-            doc2vec_fitted_model_file_path = os.path.join(trained_models_dir, 'doc2vec_model.pkl')
-            print(f'doc2vec_fitted_model_file_path: {doc2vec_fitted_model_file_path}')
-            if not os.path.isfile(doc2vec_fitted_model_file_path):
-                print('{}: Create and train Doc2Vec model on {}'.format((time.asctime(time.localtime(time.time()))),
-                                                                        self.data_file_name))
-                logging.info('Create and train Doc2Vec model on {}'.format(self.data_file_name))
-                submission_body = self.all_data_set_submissions['submission_body']
-                comments_body = self.all_data['comment_body']
-                train_data_doc2vec = submission_body.append(comments_body, ignore_index=True)
-                train_data_doc2vec = pd.Series(train_data_doc2vec.unique())
-                print(f'train_data_doc2vec shape: {train_data_doc2vec.shape}')
-                self.doc2vec_model = Doc2Vec(fname='', linux=False, use_file=False, data=train_data_doc2vec,
-                                             vector_size=self.doc2vec_vector_size)
-                joblib.dump(self.doc2vec_model, doc2vec_fitted_model_file_path)
-                print('{}: finish fitting doc2vec model'.format(time.asctime(time.localtime(time.time()))))
-                logging.info('finish fitting doc2vec model')
+            if not self.use_bert:  # use doc2vec and not BERT
+                doc2vec_fitted_model_file_path = os.path.join(trained_models_dir, 'doc2vec_model.pkl')
+                print(f'doc2vec_fitted_model_file_path: {doc2vec_fitted_model_file_path}')
+                if not os.path.isfile(doc2vec_fitted_model_file_path):
+                    print('{}: Create and train Doc2Vec model on {}'.format((time.asctime(time.localtime(time.time()))),
+                                                                            self.data_file_name))
+                    logging.info('Create and train Doc2Vec model on {}'.format(self.data_file_name))
+                    submission_body = self.all_data_set_submissions['submission_body']
+                    comments_body = self.all_data['comment_body']
+                    train_data_doc2vec = submission_body.append(comments_body, ignore_index=True)
+                    train_data_doc2vec = pd.Series(train_data_doc2vec.unique())
+                    print(f'train_data_doc2vec shape: {train_data_doc2vec.shape}')
+                    self.doc2vec_model = Doc2Vec(fname='', linux=False, use_file=False, data=train_data_doc2vec,
+                                                 vector_size=self.doc2vec_vector_size)
+                    joblib.dump(self.doc2vec_model, doc2vec_fitted_model_file_path)
+                    print('{}: finish fitting doc2vec model'.format(time.asctime(time.localtime(time.time()))))
+                    logging.info('finish fitting doc2vec model')
 
-            else:
-                print('{}: Loading fitted doc2vec model'.format(time.asctime(time.localtime(time.time()))))
-                logging.info('Loading fitted doc2vec model')
-                self.doc2vec_model = joblib.load(doc2vec_fitted_model_file_path)
+                else:
+                    print('{}: Loading fitted doc2vec model'.format(time.asctime(time.localtime(time.time()))))
+                    logging.info('Loading fitted doc2vec model')
+                    self.doc2vec_model = joblib.load(doc2vec_fitted_model_file_path)
+
+            else:  # use BERT and not doc2vec
+                self.bert_model = bert_model.BertTransformer()
 
         return
 
@@ -508,7 +519,11 @@ class CreateFeatures:
             submitter_features.loc[0, 'number_of_comments_in_tree_from_submitter'] =\
                 number_of_comments_in_tree_from_submitter
 
-            embedded_submission_text = self.doc2vec_model.infer_doc_vector(submission.submission_title_and_body)
+            if self.bert_model:
+                embedded_submission_text =\
+                    self.bert_model.get_text_average_pooler(submission.submission_title_and_body, max_size=400)
+            else:
+                embedded_submission_text = self.doc2vec_model.infer_doc_vector(submission.submission_title_and_body)
 
             self.submission_data_dict[submission.submission_id] = [embedded_submission_text,
                                                                    np.array(submission_features)[0].astype(float),
@@ -534,12 +549,20 @@ class CreateFeatures:
             branch_comments_body = self.branch_comments_dict[branch_id][['comment_body']]
             branch_comments_body = branch_comments_body.assign(embedded_comment_text='')
             for inner_index, comment in branch_comments_body.iterrows():
-                branch_comments_body.loc[inner_index, 'embedded_comment_text'] = \
-                    self.doc2vec_model.infer_doc_vector(comment['comment_body'])
+                if self.use_bert:
+                    branch_comments_body.loc[inner_index, 'embedded_comment_text'] =\
+                        self.bert_model.get_text_average_pooler(comment['comment_body'], max_size=400)
+                else:
+                    branch_comments_body.loc[inner_index, 'embedded_comment_text'] = \
+                        self.doc2vec_model.infer_doc_vector(comment['comment_body'])
             branch_comments_body = branch_comments_body['embedded_comment_text']
             if branch_comments_body.shape[0] < self.max_branch_length:
-                append_zero = pd.Series(np.zeros(
-                    shape=(self.max_branch_length - branch_comments_body.shape[0], self.doc2vec_vector_size)).tolist())
+                if self.use_bert:
+                    append_zero = pd.Series(np.zeros(
+                        shape=(self.max_branch_length - branch_comments_body.shape[0], self.bert_vector_size)).tolist())
+                else:
+                    append_zero = pd.Series(np.zeros(shape=(self.max_branch_length - branch_comments_body.shape[0],
+                                                            self.doc2vec_vector_size)).tolist())
                 branch_comments_body = pd.concat([branch_comments_body, append_zero], ignore_index=True)
             else:
                 branch_comments_body = branch_comments_body.reset_index()['embedded_comment_text']
@@ -550,7 +573,8 @@ class CreateFeatures:
             # self.branch_comments_embedded_text_df = self.branch_comments_embedded_text_df.append(branch_comments_body)
 
         self.branch_comments_embedded_text_df = pd.DataFrame.from_records(
-            list(self.branch_comments_embedded_text_df.values()), index=list(self.branch_comments_embedded_text_df.keys()))
+            list(self.branch_comments_embedded_text_df.values()),
+            index=list(self.branch_comments_embedded_text_df.keys()))
         print(time.asctime(time.localtime(time.time())), ': Finish comments text creation')
         logging.info('Finish comments text creation')
 
@@ -1298,7 +1322,7 @@ def split_data_and_run(data_type: str, create_features: CreateFeatures, split_nu
     return
 
 
-def not_parallel_main(doc2vec_vector_size):
+def not_parallel_main(main_doc2vec_vector_size):
     data_to_create_features = ['train']
     log_file_name = os.path.join(log_directory, datetime.now().strftime(
                                     f'LogFile_create_features_delta_{data_to_create_features}_%d_%m_%Y_%H_%M_%S.log'))
@@ -1311,7 +1335,7 @@ def not_parallel_main(doc2vec_vector_size):
     split_number = 10
     print('{}: Create object'.format((time.asctime(time.localtime(time.time())))))
     logging.info('Create object')
-    create_features = CreateFeatures(topics_number, doc2vec_vector_size=doc2vec_vector_size)
+    create_features = CreateFeatures(topics_number, doc2vec_vector_size=main_doc2vec_vector_size)
 
     print('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
     logging.info('Loading train data')
@@ -1354,12 +1378,13 @@ def not_parallel_main(doc2vec_vector_size):
 
 
 @ray.remote
-def execute_parallel(data_set, data_type: str, load_data: bool=False):
+def execute_parallel(data_set, data_type: str, load_data: bool=False, main_doc2vec_vector_size=0):
     """
     This function run the process of creating features in parallel
     :param data_set: directory to read the data from
     :param data_type: which data we use- train/test/val
     :param load_data: if to load all train data and train the models
+    :param main_doc2vec_vector_size: if using doc2vec- the size of the output vector
     :return:
     """
     log_file_name = os.path.join(log_directory, datetime.now().strftime(
@@ -1374,7 +1399,7 @@ def execute_parallel(data_set, data_type: str, load_data: bool=False):
     print('{}: Create object'.format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Create object'.format((time.asctime(time.localtime(time.time())))))
     inner_max_branch_length = max_branch_length_dict[data_type]
-    create_features = CreateFeatures(topics_number, inner_max_branch_length, doc2vec_vector_size=doc2vec_vector_size)
+    create_features = CreateFeatures(topics_number, inner_max_branch_length, doc2vec_vector_size=main_doc2vec_vector_size)
 
     print('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
@@ -1410,7 +1435,7 @@ def execute_parallel(data_set, data_type: str, load_data: bool=False):
 def parallel_main():
     ray.init()
 
-    if len(sys.argv) > 1:
+    if len(sys.argv) > 2:
         data_type = sys.argv[2]
         specific_data_type = True
     else:
@@ -1438,9 +1463,10 @@ def parallel_main():
     return
 
 
-def manual_parallel_main(load_data, doc2vec_vector_size):
+def manual_parallel_main(load_data, main_doc2vec_vector_size):
     """
     :param load_data: if to load all train data and train the models
+    :param main_doc2vec_vector_size: if using doc2vec- the size of the output vector
     :return:
     """
     data_set = sys.argv[2]
@@ -1458,7 +1484,8 @@ def manual_parallel_main(load_data, doc2vec_vector_size):
     print('{}: Create object'.format((time.asctime(time.localtime(time.time())))))
     logging.info('Create object')
     inner_max_branch_length = max_branch_length_dict[data_set[:5]]
-    create_features = CreateFeatures(topics_number, inner_max_branch_length, doc2vec_vector_size=doc2vec_vector_size)
+
+    create_features = CreateFeatures(topics_number, inner_max_branch_length, doc2vec_vector_size=main_doc2vec_vector_size)
 
     print('{}: Loading train data or fitted models'.format((time.asctime(time.localtime(time.time())))))
     logging.info('Loading train data or fitted models')
@@ -1497,25 +1524,29 @@ if __name__ == '__main__':
     """
     sys.argv[1] = main_func
     sys.argv[2] = data_dir / data_type to run in ray
-    sys.argv[3] = load_data
+    sys.argv[3] = main_load_data
     sys.argv[4] = doc2vec_vector_size
+    sys.argv[5] = use_bert
     """
     main_func = sys.argv[1]
     print(f'Start run {main_func}')
     logging.info('Start run {}'.format(main_func))
-    load_data = sys.argv[3]
-    print(f'load_data: {load_data}')
-    if load_data == 'False':
-        load_data = False
+    main_load_data = sys.argv[3]
+    print(f'main_load_data: {main_load_data}')
+    if main_load_data == 'False':
+        main_load_data = False
 
-    doc2vec_vector_size = int(sys.argv[4])
+    if len(sys.argv) > 4:
+        glob_doc2vec_vector_size = int(sys.argv[4])
+    else:
+        glob_doc2vec_vector_size = 0
 
     if main_func == 'parallel_main':
         parallel_main()
     elif main_func == 'not_parallel_main':
-        not_parallel_main(doc2vec_vector_size)
+        not_parallel_main(glob_doc2vec_vector_size)
     elif main_func == 'manual_parallel_main':
-        manual_parallel_main(load_data, doc2vec_vector_size)
+        manual_parallel_main(main_load_data, glob_doc2vec_vector_size)
     else:
         print(f'{main_func} is not main function in this code')
         logging.info('{} is not main function in this code'.format(main_func))
