@@ -15,6 +15,12 @@ from gensim.sklearn_api import ldamodel
 from sklearn import metrics
 import umap
 import hdbscan
+import matplotlib
+import matplotlib.pyplot as plt
+import pandas as pd
+import nltk
+
+
 
 base_directory = os.path.abspath(os.curdir)
 # base_directory = os.path.join(base_directory, 'to_server')
@@ -183,6 +189,23 @@ class SubmissionsClusters:
         print('davies_bouldin_score is: ', str(davies_bouldin_score))
 
         return
+
+
+def get_cluster_top_words(df, method_name, cluster_num, top_n=10):
+
+    freq_df = df.str.split(expand=True).stack().value_counts()
+
+    stopwords = nltk.corpus.stopwords.words('english')
+    freq_df = freq_df[~freq_df.index.isin(stopwords + ['CMV:', 'CMV', 'CMV.'])]
+
+    print(freq_df.head(top_n))
+
+    # print graph
+    matplotlib.style.use('ggplot')
+    freq_df.head(top_n).plot.bar(rot=0)
+
+    freq_df.to_csv('top_words_', method_name, '_cluster_', str(cluster_num), '.csv')
+    return
 
 
 def clean(text):
