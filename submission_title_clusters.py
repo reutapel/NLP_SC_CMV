@@ -11,6 +11,8 @@ from submissions_clusters import *
 from bert_model import BertTransformer
 from functools import reduce
 
+num_clusters = 15
+
 
 class SubmissionsTitleClusters:
     """ creates embedded version of submission titles and clusters them """
@@ -93,6 +95,7 @@ def main():
 
     # load data
     data_file_path = os.path.join(data_directory, 'comments_label_branch_info_after_remove_no_length_0.csv')
+    # comments_label_branch_info_after_remove_no_length_0
     all_train_data = pd.read_csv(data_file_path)
     print("raw data shape: ", all_train_data.shape)
 
@@ -172,41 +175,46 @@ def main():
     clusters_dfs = list()
     # GMM clustering on different embeddings
     submission_title_bert_embedded_poolers_y_gmm = submissions_clusters_obj.gmm_cluster(
-        sub_title_cluster_obj.poolers_df, n_components=10, covariance_type='full')
+        sub_title_cluster_obj.poolers_df, n_components=num_clusters, covariance_type='full')
     submission_title_bert_embedded_tsne_with_pca_y_gmm = submissions_clusters_obj.gmm_cluster(
-        submission_title_bert_embedded_x_tsne_with_pca[[0, 1]], n_components=10, covariance_type='full')
+        submission_title_bert_embedded_x_tsne_with_pca[[0, 1]], n_components=num_clusters, covariance_type='full')
     submission_title_bert_embedded_tsne_y_gmm = submissions_clusters_obj.gmm_cluster(
-        submission_title_bert_embedded_x_tsne[[0, 1]], n_components=10, covariance_type='full')
+        submission_title_bert_embedded_x_tsne[[0, 1]], n_components=num_clusters, covariance_type='full')
     submission_title_bert_embedded_umap_y_gmm = submissions_clusters_obj.gmm_cluster(
-        submission_title_bert_embedded_x_umap[list(range(umap_n_component))], n_components=10, covariance_type='full')
+        submission_title_bert_embedded_x_umap[list(range(umap_n_component))], n_components=num_clusters,
+        covariance_type='full')
 
     submission_title_bert_embedded_poolers_y_gmm = all_train_data_submission_title_id.merge(
         pd.DataFrame(submission_title_bert_embedded_poolers_y_gmm, columns=['cluster_id_poolers_y_gmm']),
         left_index=True, right_index=True)
     clusters_dfs.append(submission_title_bert_embedded_poolers_y_gmm)
     joblib.dump(submission_title_bert_embedded_poolers_y_gmm,
-                os.path.join(clusters_directory, 'submission_title_bert_embedded_poolers_y_gmm.pickle'))
+                os.path.join(clusters_directory,
+                             f'submission_title_bert_embedded_poolers_y_gmm_{num_clusters}_component.pickle'))
 
     submission_title_bert_embedded_tsne_with_pca_y_gmm = all_train_data_submission_title_id.merge(
         pd.DataFrame(submission_title_bert_embedded_tsne_with_pca_y_gmm, columns=['cluster_id_tsne_with_pca_y_gmm']),
         left_index=True, right_index=True)
     clusters_dfs.append(submission_title_bert_embedded_tsne_with_pca_y_gmm)
     joblib.dump(submission_title_bert_embedded_tsne_with_pca_y_gmm,
-                os.path.join(clusters_directory, 'submission_title_bert_embedded_tsne_with_pca_y_gmm.pickle'))
+                os.path.join(clusters_directory,
+                             f'submission_title_bert_embedded_tsne_with_pca_y_gmm_{num_clusters}_component.pickle'))
 
     submission_title_bert_embedded_tsne_y_gmm = all_train_data_submission_title_id.merge(
         pd.DataFrame(submission_title_bert_embedded_tsne_y_gmm, columns=['cluster_id_tsne_y_gmm']),
         left_index=True, right_index=True)
     clusters_dfs.append(submission_title_bert_embedded_tsne_y_gmm)
     joblib.dump(submission_title_bert_embedded_tsne_y_gmm,
-                os.path.join(clusters_directory, 'submission_title_bert_embedded_tsne_y_gmm.pickle'))
+                os.path.join(clusters_directory,
+                             f'submission_title_bert_embedded_tsne_y_gmm_{num_clusters}_component.pickle'))
 
     submission_title_bert_embedded_umap_y_gmm = all_train_data_submission_title_id.merge(
         pd.DataFrame(submission_title_bert_embedded_umap_y_gmm, columns=['cluster_id_x_umap']),
         left_index=True, right_index=True)
     clusters_dfs.append(submission_title_bert_embedded_umap_y_gmm)
     joblib.dump(submission_title_bert_embedded_umap_y_gmm,
-                os.path.join(clusters_directory, 'submission_title_bert_embedded_umap_y_gmm.pickle'))
+                os.path.join(clusters_directory,
+                             f'submission_title_bert_embedded_umap_y_gmm_{num_clusters}_component.pickle'))
 
     # HDBSCAN clustering on different embeddings
     submission_title_bert_embedded_poolers_y_hdbscan = submissions_clusters_obj.hdbscan_cluster(
@@ -248,7 +256,13 @@ def main():
 
     # concat all clusters results and save
     all_clusters = reduce(lambda left, right: pd.merge(left, right, on='submission_id'), clusters_dfs)
-    all_clusters.to_csv(os.path.join(clusters_directory, 'all_clusters.csv'))
+    # remove duplicated columns submission_title
+    columns = [column for column in all_clusters.columns if 'submission_title' not in column]
+    columns.append('submission_title_x')
+    all_clusters = all_clusters[columns]
+    all_clusters.rename(columns={'submission_title_x': 'submission_title'}, inplace=True)
+    all_clusters = all_clusters.loc[:, ~all_clusters.columns.duplicated()]
+    all_clusters.to_csv(os.path.join(clusters_directory, f'all_clusters_{num_clusters}_component.csv'))
 
     print('evaluating embedding and clustering methods:')
     print('silhouette_score- NOTE boundeed between -1 to 1, higher is better, 0 is overlapping clusters, biased for convex ' 
@@ -258,48 +272,52 @@ def main():
     ' 0 the better, biased for convex clusters and not density based like DBSCAN, and limited to Euclidean only')
     # evaluate clustering
     # GMM
-    submissions_clusters_obj.evaluate_clusters(
+    all_evaluations = list()
+    all_evaluations.append(submissions_clusters_obj.evaluate_clusters(
         data=sub_title_cluster_obj.poolers_df, cluster_labels=submission_title_bert_embedded_poolers_y_gmm[
             submission_title_bert_embedded_poolers_y_gmm.columns[2]],
-        cluster_method_name='GMM WITH BERT POOLERS EMBEDDING')
+        cluster_method_name='GMM WITH BERT POOLERS EMBEDDING'))
 
-    submissions_clusters_obj.evaluate_clusters(
+    all_evaluations.append(submissions_clusters_obj.evaluate_clusters(
         data=submission_title_bert_embedded_x_tsne_with_pca[[0, 1]],
         cluster_labels=submission_title_bert_embedded_tsne_with_pca_y_gmm[
             submission_title_bert_embedded_tsne_with_pca_y_gmm.columns[2]],
-        cluster_method_name='GMM WITH TSNE WITH PCA')
+        cluster_method_name='GMM WITH TSNE WITH PCA'))
 
-    submissions_clusters_obj.evaluate_clusters(
+    all_evaluations.append(submissions_clusters_obj.evaluate_clusters(
         data=submission_title_bert_embedded_x_tsne[[0, 1]],
         cluster_labels=submission_title_bert_embedded_tsne_y_gmm[submission_title_bert_embedded_tsne_y_gmm.columns[2]],
-        cluster_method_name='GMM WITH TSNE')
+        cluster_method_name='GMM WITH TSNE'))
 
-    submissions_clusters_obj.evaluate_clusters(
+    all_evaluations.append(submissions_clusters_obj.evaluate_clusters(
         data=submission_title_bert_embedded_x_umap[list(range(umap_n_component))],
         cluster_labels=submission_title_bert_embedded_umap_y_gmm[submission_title_bert_embedded_umap_y_gmm.columns[2]],
-        cluster_method_name='GMM WITH UMAP')
+        cluster_method_name='GMM WITH UMAP'))
     # HDBSCAN
-    submissions_clusters_obj.evaluate_clusters(
+    all_evaluations.append(submissions_clusters_obj.evaluate_clusters(
         data=sub_title_cluster_obj.poolers_df,
         cluster_labels=submission_title_bert_embedded_poolers_y_hdbscan[
             submission_title_bert_embedded_poolers_y_hdbscan.columns[2]],
-        cluster_method_name='HDBSCAN WITH BERT POOLERS EMBEDDING')
+        cluster_method_name='HDBSCAN WITH BERT POOLERS EMBEDDING'))
 
-    submissions_clusters_obj.evaluate_clusters(
+    all_evaluations.append(submissions_clusters_obj.evaluate_clusters(
         data=submission_title_bert_embedded_x_tsne_with_pca[[0, 1]],
         cluster_labels=submission_title_bert_embedded_tsne_with_pca_y_hdbscan[
             submission_title_bert_embedded_tsne_with_pca_y_hdbscan.columns[2]],
-        cluster_method_name='HDBSCAN WITH TSNE WITH PCA')
+        cluster_method_name='HDBSCAN WITH TSNE WITH PCA'))
 
-    submissions_clusters_obj.evaluate_clusters(
+    all_evaluations.append(submissions_clusters_obj.evaluate_clusters(
         data=submission_title_bert_embedded_x_tsne[[0, 1]],
         cluster_labels=submission_title_bert_embedded_tsne_y_hdbscan[
-            submission_title_bert_embedded_tsne_y_hdbscan.columns[2]], cluster_method_name='HDBSCAN WITH TSNE')
+            submission_title_bert_embedded_tsne_y_hdbscan.columns[2]], cluster_method_name='HDBSCAN WITH TSNE'))
 
-    submissions_clusters_obj.evaluate_clusters(
+    all_evaluations.append(submissions_clusters_obj.evaluate_clusters(
         data=submission_title_bert_embedded_x_umap[list(range(umap_n_component))],
         cluster_labels=submission_title_bert_embedded_umap_y_hdbscan[
-            submission_title_bert_embedded_umap_y_hdbscan.columns[2]], cluster_method_name='HDBSCAN WITH UMAP')
+            submission_title_bert_embedded_umap_y_hdbscan.columns[2]], cluster_method_name='HDBSCAN WITH UMAP'))
+
+    all_evaluations_df = pd.DataFrame(all_evaluations)
+    all_evaluations_df.to_csv(os.path.join(clusters_directory, f'all_evaluations_{num_clusters}_component.csv'))
 
     # print top word of each cluster
     top_n = 30
