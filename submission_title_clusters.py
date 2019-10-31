@@ -322,6 +322,14 @@ def main():
     all_evaluations_df = pd.DataFrame(all_evaluations)
     all_evaluations_df.to_csv(os.path.join(clusters_directory, f'all_evaluations_{num_clusters}_component.csv'))
 
+    # print top word of each cluster
+    top_n = 30
+    submission_col_name = 'submission_title_x'
+    for method_name in all_clusters.columns.difference(submission_col_name):
+        for cluster_num in all_clusters[method_name].unique():
+            get_cluster_top_words(all_clusters.loc[all_clusters[method_name] == cluster_num,
+                                                   submission_col_name], method_name, cluster_num, top_n=top_n)
+
 
 if __name__ == '__main__':
     main()
