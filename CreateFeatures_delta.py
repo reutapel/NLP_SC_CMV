@@ -82,6 +82,9 @@ class CreateFeatures:
         self.data_file_name = None
         self.number_of_topics = number_of_topics
 
+        if len(sys.argv) > 5:
+            use_bert = sys.argv[5]
+
         # Load branches data
         branch_columns = ['branch_id', 'num_delta', 'submission_id', 'branch_length', 'delta_index_in_branch',
                           'num_comments_after_delta']
@@ -518,7 +521,7 @@ class CreateFeatures:
 
             if self.bert_model:
                 embedded_submission_text =\
-                    self.bert_model.get_text_average_pooler(submission.submission_title_and_body, max_size=450)
+                    self.bert_model.get_text_average_pooler(submission.submission_title_and_body, max_size=400)
             else:
                 embedded_submission_text = self.doc2vec_model.infer_doc_vector(submission.submission_title_and_body)
 
@@ -548,7 +551,7 @@ class CreateFeatures:
             for inner_index, comment in branch_comments_body.iterrows():
                 if self.use_bert:
                     branch_comments_body.loc[inner_index, 'embedded_comment_text'] =\
-                        self.bert_model.get_text_average_pooler(comment['comment_body'], max_size=450)
+                        self.bert_model.get_text_average_pooler(comment['comment_body'], max_size=400)
                 else:
                     branch_comments_body.loc[inner_index, 'embedded_comment_text'] = \
                         self.doc2vec_model.infer_doc_vector(comment['comment_body'])
@@ -570,7 +573,8 @@ class CreateFeatures:
             # self.branch_comments_embedded_text_df = self.branch_comments_embedded_text_df.append(branch_comments_body)
 
         self.branch_comments_embedded_text_df = pd.DataFrame.from_records(
-            list(self.branch_comments_embedded_text_df.values()), index=list(self.branch_comments_embedded_text_df.keys()))
+            list(self.branch_comments_embedded_text_df.values()),
+            index=list(self.branch_comments_embedded_text_df.keys()))
         print(time.asctime(time.localtime(time.time())), ': Finish comments text creation')
         logging.info('Finish comments text creation')
 
@@ -1318,7 +1322,7 @@ def split_data_and_run(data_type: str, create_features: CreateFeatures, split_nu
     return
 
 
-def not_parallel_main(doc2vec_vector_size):
+def not_parallel_main(main_doc2vec_vector_size):
     data_to_create_features = ['train']
     log_file_name = os.path.join(log_directory, datetime.now().strftime(
                                     f'LogFile_create_features_delta_{data_to_create_features}_%d_%m_%Y_%H_%M_%S.log'))
@@ -1331,7 +1335,7 @@ def not_parallel_main(doc2vec_vector_size):
     split_number = 10
     print('{}: Create object'.format((time.asctime(time.localtime(time.time())))))
     logging.info('Create object')
-    create_features = CreateFeatures(topics_number, doc2vec_vector_size=doc2vec_vector_size)
+    create_features = CreateFeatures(topics_number, doc2vec_vector_size=main_doc2vec_vector_size)
 
     print('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
     logging.info('Loading train data')
@@ -1374,12 +1378,13 @@ def not_parallel_main(doc2vec_vector_size):
 
 
 @ray.remote
-def execute_parallel(data_set, data_type: str, load_data: bool=False):
+def execute_parallel(data_set, data_type: str, load_data: bool=False, main_doc2vec_vector_size=0):
     """
     This function run the process of creating features in parallel
     :param data_set: directory to read the data from
     :param data_type: which data we use- train/test/val
     :param load_data: if to load all train data and train the models
+    :param main_doc2vec_vector_size: if using doc2vec- the size of the output vector
     :return:
     """
     log_file_name = os.path.join(log_directory, datetime.now().strftime(
@@ -1394,7 +1399,7 @@ def execute_parallel(data_set, data_type: str, load_data: bool=False):
     print('{}: Create object'.format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Create object'.format((time.asctime(time.localtime(time.time())))))
     inner_max_branch_length = max_branch_length_dict[data_type]
-    create_features = CreateFeatures(topics_number, inner_max_branch_length, doc2vec_vector_size=doc2vec_vector_size)
+    create_features = CreateFeatures(topics_number, inner_max_branch_length, doc2vec_vector_size=main_doc2vec_vector_size)
 
     print('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
     logging.info('{}: Loading train data'.format((time.asctime(time.localtime(time.time())))))
@@ -1430,7 +1435,7 @@ def execute_parallel(data_set, data_type: str, load_data: bool=False):
 def parallel_main():
     ray.init()
 
-    if len(sys.argv) > 1:
+    if len(sys.argv) > 2:
         data_type = sys.argv[2]
         specific_data_type = True
     else:
@@ -1458,9 +1463,10 @@ def parallel_main():
     return
 
 
-def manual_parallel_main(load_data, doc2vec_vector_size):
+def manual_parallel_main(load_data, main_doc2vec_vector_size):
     """
     :param load_data: if to load all train data and train the models
+    :param main_doc2vec_vector_size: if using doc2vec- the size of the output vector
     :return:
     """
     data_set = sys.argv[2]
@@ -1478,7 +1484,8 @@ def manual_parallel_main(load_data, doc2vec_vector_size):
     print('{}: Create object'.format((time.asctime(time.localtime(time.time())))))
     logging.info('Create object')
     inner_max_branch_length = max_branch_length_dict[data_set[:5]]
-    create_features = CreateFeatures(topics_number, inner_max_branch_length, doc2vec_vector_size=doc2vec_vector_size)
+
+    create_features = CreateFeatures(topics_number, inner_max_branch_length, doc2vec_vector_size=main_doc2vec_vector_size)
 
     print('{}: Loading train data or fitted models'.format((time.asctime(time.localtime(time.time())))))
     logging.info('Loading train data or fitted models')
@@ -1517,28 +1524,29 @@ if __name__ == '__main__':
     """
     sys.argv[1] = main_func
     sys.argv[2] = data_dir / data_type to run in ray
-    sys.argv[3] = load_data
+    sys.argv[3] = main_load_data
     sys.argv[4] = doc2vec_vector_size
+    sys.argv[5] = use_bert
     """
     main_func = sys.argv[1]
     print(f'Start run {main_func}')
     logging.info('Start run {}'.format(main_func))
-    load_data = sys.argv[3]
-    print(f'load_data: {load_data}')
-    if load_data == 'False':
-        load_data = False
+    main_load_data = sys.argv[3]
+    print(f'main_load_data: {main_load_data}')
+    if main_load_data == 'False':
+        main_load_data = False
 
-    if len(sys.argv) > 3:
-        doc2vec_vector_size = int(sys.argv[4])
+    if len(sys.argv) > 4:
+        glob_doc2vec_vector_size = int(sys.argv[4])
     else:
-        doc2vec_vector_size = 0
+        glob_doc2vec_vector_size = 0
 
     if main_func == 'parallel_main':
         parallel_main()
     elif main_func == 'not_parallel_main':
-        not_parallel_main(doc2vec_vector_size)
+        not_parallel_main(glob_doc2vec_vector_size)
     elif main_func == 'manual_parallel_main':
-        manual_parallel_main(load_data, doc2vec_vector_size)
+        manual_parallel_main(main_load_data, glob_doc2vec_vector_size)
     else:
         print(f'{main_func} is not main function in this code')
         logging.info('{} is not main function in this code'.format(main_func))
