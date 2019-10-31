@@ -107,8 +107,11 @@ def main():
     del all_train_data
 
     # remove CMV prefix from titles that have it
-    all_train_data_submission_title_unique = \
-        pd.Series(all_train_data_submission_title_unique).apply(lambda x: x[5:] if x.startswith('CMV:') else x)
+    # all_train_data_submission_title_unique = \
+    #     pd.Series(all_train_data_submission_title_unique).apply(lambda x: x[5:] if x.startswith('CMV:') else x)
+
+    all_train_data_submission_title_unique = all_train_data_submission_title_unique.str.replace('CMV:, ')
+    all_train_data_submission_title_unique = all_train_data_submission_title_unique.str.replace('CMV', '')
 
     # create class obj
     sub_title_cluster_obj = SubmissionsTitleClusters(data=all_train_data_submission_title_unique,
