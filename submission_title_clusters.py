@@ -44,7 +44,7 @@ class SubmissionsTitleClusters:
             poolers_list = list()
             for index, row in tqdm(self.data.iteritems(), total=self.data.shape[0]):
                 # pooler = self.bert_model.bert_text_encoding(row, take_bert_pooler=True)
-                pooler = self.bert_model.get_text_average_pooler(row, max_size=450)
+                pooler = self.bert_model.get_text_average_pooler_split_bert(row, max_size=512)
                 poolers_list.append(pd.Series(pooler))
             self.poolers_df = pd.DataFrame(poolers_list)
             # print('finished BERT encoding', datetime.datetime.now())
