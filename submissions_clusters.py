@@ -168,7 +168,7 @@ class SubmissionsClusters:
 
         return topic_model_final_result
 
-    def evaluate_clusters(self, data, cluster_labels, cluster_method_name):
+    def evaluate_clusters(self, data, cluster_labels, cluster_method_name) -> dict:
         # metrics.pairwise.pairwise_distances
         print('evaluating ', cluster_method_name)
         silhouette_score_euc = metrics.silhouette_score(data, cluster_labels, metric='euclidean')
@@ -182,7 +182,11 @@ class SubmissionsClusters:
         davies_bouldin_score = metrics.davies_bouldin_score(data, cluster_labels)
         print('davies_bouldin_score is: ', str(davies_bouldin_score))
 
-        return
+        return {'cluster_method_name': cluster_method_name,
+                'silhouette_score_euc': silhouette_score_euc,
+                'silhouette_score_cos': silhouette_score_cos,
+                'calinski_harabasz_score' :calinski_harabasz_score,
+                'davies_bouldin_score': davies_bouldin_score}
 
 
 def clean(text):
