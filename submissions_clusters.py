@@ -30,7 +30,7 @@ trained_models_directory = os.path.join(base_directory, 'trained_models')
 
 
 class SubmissionsClusters:
-    def __init__(self, data, number_of_topics=15, use_topic=False):
+    def __init__(self, data, number_of_topics=15, use_topic=False, hdbscan_min_cluster_size=5):
         # self.number_of_topics = number_of_topics
         # embedded_file_path = os.path.join(os.path.join(trained_models_directory, 'new', 'embedded_submission_text.pkl'))
         # if not os.path.isfile(embedded_file_path):
@@ -59,6 +59,7 @@ class SubmissionsClusters:
         #         self.text_presentation = self.embedded_submission_text
         self.data = data
         self.number_of_topics = number_of_topics
+        self.hdbscan_min_cluster_size = hdbscan_min_cluster_size
 
     def create_embedded(self):
         print(f'{time.asctime(time.localtime(time.time()))}: start creating embedded data')
@@ -133,7 +134,7 @@ class SubmissionsClusters:
         return cluster_labels
 
     def hdbscan_cluster(self, data):
-        cluster_labels = hdbscan.HDBSCAN().fit_predict(data)
+        cluster_labels = hdbscan.HDBSCAN(self.hdbscan_min_cluster_size).fit_predict(data)
         return cluster_labels
 
     def topic_model(self):
@@ -195,20 +196,21 @@ class SubmissionsClusters:
                 'davies_bouldin_score': davies_bouldin_score}
 
 
-def get_cluster_top_words(df, method_name, cluster_num, top_n=10):
+def get_cluster_top_words(df, method_name, cluster_num, top_n=10, print_freq_df=True, directory=base_directory):
 
     freq_df = df.str.split(expand=True).stack().value_counts()
 
     stopwords = nltk.corpus.stopwords.words('english')
     freq_df = freq_df[~freq_df.index.isin(stopwords + ['CMV:', 'CMV', 'CMV.'])]
 
-    print(freq_df.head(top_n))
+    if print_freq_df:
+        print(freq_df.head(top_n))
 
     # print graph
     matplotlib.style.use('ggplot')
     freq_df.head(top_n).plot.bar(rot=0)
 
-    freq_df.to_csv('top_words_', method_name, '_cluster_', str(cluster_num), '.csv')
+    freq_df.to_csv(os.path.join(directory, f'top_words_{method_name}_cluster_{str(cluster_num)}.csv'))
     return
 
 

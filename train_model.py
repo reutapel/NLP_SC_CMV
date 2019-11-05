@@ -420,12 +420,11 @@ def replace_0_with_list(df, len_list_in_cell):
 
 def main(is_cuda):
 
-    debug = True
-
-    import_split_data_obj = ImportSplitData()
-    all_data_dict = import_split_data_obj.sort_joined_data()
+    debug = False
 
     if not debug:
+        import_split_data_obj = ImportSplitData()
+        all_data_dict = import_split_data_obj.sort_joined_data()
 
         # load train data
         if 'train' in all_data_dict.keys():

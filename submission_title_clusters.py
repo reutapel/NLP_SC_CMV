@@ -11,13 +11,21 @@ from submissions_clusters import *
 from bert_model import BertTransformer
 from functools import reduce
 
-num_clusters = 15
+num_clusters = 5
+
+
+def merge_check_size(data: pd.DataFrame, clusters: pd.DataFrame) -> pd.DataFrame:
+    data_classes = data.merge(clusters, on='submission_id', how='inner')
+    if data_classes.shape[0] != data.shape[0]:
+        print(f'train data merge with clusters removed rows')
+
+    return data_classes
 
 
 class SubmissionsTitleClusters:
     """ creates embedded version of submission titles and clusters them """
 
-    def __init__(self, data, data_directory, embedding_size, take_bert_pooler=True):
+    def __init__(self, data, data_directory, embedding_size, take_bert_pooler=True, clusters_directory=''):
 
         self.data = data
         self.data_directory = data_directory
@@ -29,6 +37,7 @@ class SubmissionsTitleClusters:
         self.take_bert_pooler = take_bert_pooler
         self.poolers_df = None
         self.bert_model = None
+        self.clusters_directory = clusters_directory
 
     def bert_encoding(self, is_save=False):
         """
@@ -50,7 +59,7 @@ class SubmissionsTitleClusters:
             # print('finished BERT encoding', datetime.datetime.now())
             if is_save:
                 print('saving BERT embedded df')
-                joblib.dump(self.poolers_df, 'bert_poolers_df.pickle')
+                joblib.dump(self.poolers_df, os.path.join(self.clusters_directory, 'bert_poolers_df.pickle'))
         return
 
     def doc2vec_embedding(self, min_count=2, epochs=200):
@@ -83,6 +92,39 @@ class SubmissionsTitleClusters:
         corpus = list(set([a for b in data_splitted.tolist() for a in b]))
         print('unique words count is: ', len(corpus))
 
+    def split_data_into_clusters(self, cluster_method: str, train_data: pd.DataFrame, test_data: pd.DataFrame,
+                                 validation_data: pd.DataFrame, clusters_results: pd.DataFrame):
+        """
+        Get train, validation, test data and the class number for each submission based on the chosen cluster method,
+        and create train, test, validation data for each class
+        :param cluster_method: the name of the cluster to use
+        :param train_data: the whole train data
+        :param test_data: the whole test data
+        :param validation_data: the whole validation data
+        :param clusters_results: the classes for each submission for each cluster method
+        :return:
+        """
+
+        chosen_cluster_classes = clusters_results[[cluster_method, 'submission_id']]
+        clusters_data_directory = os.path.join(save_data_directory, 'clusters_data')
+        if not os.path.exists(clusters_data_directory):
+            os.makedirs(clusters_data_directory)        # train_data_classes = merge_check_size(train_data, chosen_cluster_classes)
+        # test_data_classes = merge_check_size(test_data, chosen_cluster_classes)
+        # val_data_classes = merge_check_size(validation_data, chosen_cluster_classes)
+
+        max_class_num = chosen_cluster_classes[cluster_method].max()
+        for class_num in range(max_class_num):
+            submission_id_class_num =\
+                chosen_cluster_classes.loc[chosen_cluster_classes[cluster_method] == class_num].submission_id
+            train_data.loc[train_data.submission_id.isin(submission_id_class_num)].to_csv(
+                os.path.join(clusters_data_directory, f'train_data_cluster_{class_num}'))
+            test_data.loc[test_data.submission_id.isin(submission_id_class_num)].to_csv(
+                os.path.join(clusters_data_directory, f'test_data_cluster_{class_num}'))
+            validation_data.loc[validation_data.submission_id.isin(submission_id_class_num)].to_csv(
+                os.path.join(clusters_data_directory, f'validation_data_cluster_{class_num}'))
+
+        return
+
 
 def main():
 
@@ -102,21 +144,24 @@ def main():
     # take only submission titles
     all_train_data_submission_title = all_train_data[['submission_title', 'submission_id']].copy()
     all_train_data_submission_title_id = all_train_data_submission_title.drop_duplicates().reset_index(drop=True)
+    # remove CMV prefix from titles that have it
+    all_train_data_submission_title_id['submission_title'] = \
+        all_train_data_submission_title_id.submission_title.str.replace('CMV:', '')
+    all_train_data_submission_title_id['submission_title'] = \
+        all_train_data_submission_title_id.submission_title.str.replace('CMV', '')
+
     all_train_data_submission_title_unique = all_train_data_submission_title_id.submission_title
     print("unique data shape: ", all_train_data_submission_title_unique.shape)
     del all_train_data
 
-    # remove CMV prefix from titles that have it
     # all_train_data_submission_title_unique = \
     #     pd.Series(all_train_data_submission_title_unique).apply(lambda x: x[5:] if x.startswith('CMV:') else x)
-
-    all_train_data_submission_title_unique = all_train_data_submission_title_unique.str.replace('CMV:, ')
-    all_train_data_submission_title_unique = all_train_data_submission_title_unique.str.replace('CMV', '')
 
     # create class obj
     sub_title_cluster_obj = SubmissionsTitleClusters(data=all_train_data_submission_title_unique,
                                                      embedding_size=300,
-                                                     data_directory=data_directory, take_bert_pooler=True)
+                                                     data_directory=data_directory, take_bert_pooler=True,
+                                                     clusters_directory=clusters_directory)
     sub_title_cluster_obj.describe_data()
 
     # encode
@@ -131,7 +176,7 @@ def main():
     # for debugging
     # poolers_df = joblib.load('bert_poolers_df.pickle')
     # cluster embedded data
-    submissions_clusters_obj = SubmissionsClusters(sub_title_cluster_obj.poolers_df)
+    submissions_clusters_obj = SubmissionsClusters(sub_title_cluster_obj.poolers_df, hdbscan_min_cluster_size=15)
     # reduce dimensions in 3 methods, tsne with pca, tsne without pca, umap
     submission_title_bert_embedded_x_tsne_with_pca = submissions_clusters_obj.tsne_dim_reduce(plot_tsne_results=True,
                                                                                   is_pca_pre=True, pca_dim_pre=50,
@@ -233,6 +278,7 @@ def main():
     submission_title_bert_embedded_poolers_y_hdbscan = all_train_data_submission_title_id.merge(
         pd.DataFrame(submission_title_bert_embedded_poolers_y_hdbscan, columns=['cluster_id_poolers_y_hdbscan']),
         left_index=True, right_index=True)
+    clusters_dfs.append(submission_title_bert_embedded_poolers_y_hdbscan)
     joblib.dump(submission_title_bert_embedded_poolers_y_hdbscan,
                 os.path.join(clusters_directory, 'submission_title_bert_embedded_poolers_y_hdbscan.pickle'))
 
@@ -323,12 +369,16 @@ def main():
     all_evaluations_df.to_csv(os.path.join(clusters_directory, f'all_evaluations_{num_clusters}_component.csv'))
 
     # print top word of each cluster
+    top_words_directory = os.path.join(clusters_directory, f'top_words_{num_clusters}_components')
+    if not os.path.exists(top_words_directory):
+        os.makedirs(top_words_directory)
     top_n = 30
-    submission_col_name = 'submission_title_x'
-    for method_name in all_clusters.columns.difference(submission_col_name):
+    submission_col_name = 'submission_title'
+    for method_name in all_clusters.columns.difference([submission_col_name, 'submission_id']):
         for cluster_num in all_clusters[method_name].unique():
-            get_cluster_top_words(all_clusters.loc[all_clusters[method_name] == cluster_num,
-                                                   submission_col_name], method_name, cluster_num, top_n=top_n)
+            get_cluster_top_words(all_clusters.loc[all_clusters[method_name] == cluster_num, submission_col_name],
+                                  method_name, cluster_num, top_n=top_n, print_freq_df=False,
+                                  directory=top_words_directory)
 
 
 if __name__ == '__main__':
