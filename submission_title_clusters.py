@@ -131,6 +131,14 @@ class SubmissionsTitleClusters:
 
 
 def main():
+
+    # define paths
+    base_directory = os.path.abspath(os.curdir)
+    data_directory = os.path.join(base_directory, 'data', 'filter_submissions')
+    clusters_directory = os.path.join(base_directory, 'data', 'clusters')
+    if not os.path.exists(clusters_directory):
+        os.makedirs(clusters_directory)
+
     # load data
     data_file_path = os.path.join(data_directory, 'comments_label_branch_info_after_remove_no_length_0.csv')
     # comments_label_branch_info_after_remove_no_length_0
