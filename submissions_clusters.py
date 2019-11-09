@@ -21,7 +21,6 @@ import pandas as pd
 import nltk
 
 
-
 base_directory = os.path.abspath(os.curdir)
 # base_directory = os.path.join(base_directory, 'to_server')
 data_directory = os.path.join(base_directory, 'data')

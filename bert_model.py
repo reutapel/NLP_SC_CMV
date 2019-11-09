@@ -3,7 +3,7 @@ from pytorch_transformers import *
 import pandas as pd
 import datetime
 import numpy as np
-
+import math
 # # for 6 transformer architectures and 27 pretrained weights.
 # #          Model          | Tokenizer          | Pretrained weights shortcut
 # MODELS = [(BertModel,       BertTokenizer,      'bert-base-uncased'),
@@ -98,9 +98,18 @@ class BertTransformer:
                 current_part = current_part + current_sentence
                 current_part_len += current_tokens_count
             else:
-                current_part = current_sentence  # TODO: debug with string and with long comments, make sure doesnt loose parts in the middle
-                current_part_len = current_tokens_count
+                # insert last legitimate part
                 text_parts_list.append(current_part)
+                # check that current sentence is in legitimate length
+                if len(current_sentence) <= max_size:
+                    # update incremental part with last legitimate length of current sentence
+                    current_part = current_sentence  # TODO: debug with string and with long comments, make sure doesnt loose parts in the middle
+                    current_part_len = current_tokens_count
+                else:
+                    # split current sentence to valid lengths
+                    num_split = math.ceil(len(current_sentence) / max_size)
+                    splited_current_sentence = [l.tolist() for l in np.array_split(current_sentence, num_split)]
+                    text_parts_list += splited_current_sentence
         # in case entire text never crossed max_size or last part didn't..
         if current_part in text_parts_list:
             return text_parts_list
@@ -147,7 +156,7 @@ class BertTransformer:
         poolers_list = list()
 
         # Encode text
-        print('starting BERT encoding', datetime.datetime.now())
+        # print('starting BERT encoding', datetime.datetime.now())
         tokenized = self.tokenizer.tokenize(text)
         # tokenized.insert(0, 'CLS')
         input_ids = self.tokenizer.convert_tokens_to_ids(tokenized)
@@ -161,7 +170,7 @@ class BertTransformer:
                                                              is_list=True)
             else:
                 # splitting just by max size since there is no split_id in
-                #TODO: validate list of lists
+                # TODO: validate list of lists
                 input_ids_list = [input_ids[x:x + max_size] for x in range(0, len(input_ids), max_size)]
 
         # encode each text part
@@ -170,13 +179,8 @@ class BertTransformer:
                 # add id 100 to get pooler
                     input_ids_sub.insert(0, 100)
                     pooler = self.model(torch.tensor([input_ids_sub]).to(torch.int64))[0][0][0]
-                    print('finished BERT encoding, returning BERT pooler', datetime.datetime.now())
+                    # print('finished BERT encoding, returning BERT pooler', datetime.datetime.now())
                     poolers_list.append(pd.Series(pooler))
         # average all poolers of text
         average_pooler = self.average_vectors(poolers_list)
         return average_pooler
-
-
-
-
-

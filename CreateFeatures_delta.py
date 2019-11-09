@@ -84,6 +84,8 @@ class CreateFeatures:
 
         if len(sys.argv) > 5:
             use_bert = sys.argv[5]
+        if use_bert == 'False':
+            use_bert = False
 
         # Load branches data
         branch_columns = ['branch_id', 'num_delta', 'submission_id', 'branch_length', 'delta_index_in_branch',
@@ -207,8 +209,8 @@ class CreateFeatures:
                 # get number of branches for each comment
                 comment_branch = self.data[['comment_id', 'branch_id']]
                 comment_branch_groupby = comment_branch.groupby(by='comment_id').count()
-                comment_branch_groupby['comment_id'] = comment_branch_groupby.index
-                comment_branch_groupby.columns = ['number_of_branches', 'comment_id']
+                comment_branch_groupby = comment_branch_groupby.reset_index()
+                comment_branch_groupby.columns = ['comment_id', 'number_of_branches']
 
                 self.data = self.data.merge(comment_branch_groupby, on='comment_id')
                 # 
@@ -227,8 +229,8 @@ class CreateFeatures:
                 # get number of branches for each comment
                 comment_branch = self.all_data[['comment_id', 'branch_id']]
                 comment_branch_groupby = comment_branch.groupby(by='comment_id').count()
-                comment_branch_groupby['comment_id'] = comment_branch_groupby.index
-                comment_branch_groupby.columns = ['number_of_branches', 'comment_id']
+                comment_branch_groupby = comment_branch_groupby.reset_index()
+                comment_branch_groupby.columns = ['comment_id', 'number_of_branches']
 
                 self.all_data = self.all_data.merge(comment_branch_groupby, on='comment_id')
 
@@ -521,7 +523,8 @@ class CreateFeatures:
 
             if self.bert_model:
                 embedded_submission_text =\
-                    self.bert_model.get_text_average_pooler(submission.submission_title_and_body, max_size=400)
+                    self.bert_model.get_text_average_pooler_split_bert(submission.submission_title_and_body,
+                                                                       max_size=450)
             else:
                 embedded_submission_text = self.doc2vec_model.infer_doc_vector(submission.submission_title_and_body)
 
@@ -551,7 +554,7 @@ class CreateFeatures:
             for inner_index, comment in branch_comments_body.iterrows():
                 if self.use_bert:
                     branch_comments_body.loc[inner_index, 'embedded_comment_text'] =\
-                        self.bert_model.get_text_average_pooler(comment['comment_body'], max_size=400)
+                        self.bert_model.get_text_average_pooler_split_bert(comment['comment_body'], max_size=450)
                 else:
                     branch_comments_body.loc[inner_index, 'embedded_comment_text'] = \
                         self.doc2vec_model.infer_doc_vector(comment['comment_body'])
@@ -1527,6 +1530,7 @@ if __name__ == '__main__':
     sys.argv[3] = main_load_data
     sys.argv[4] = doc2vec_vector_size
     sys.argv[5] = use_bert
+    sys.argv[6] = clusters directory name
     """
     main_func = sys.argv[1]
     print(f'Start run {main_func}')
@@ -1540,6 +1544,9 @@ if __name__ == '__main__':
         glob_doc2vec_vector_size = int(sys.argv[4])
     else:
         glob_doc2vec_vector_size = 0
+
+    if len(sys.argv) > 6:  # run on clusters
+        train_test_data_directory = os.path.join(train_test_data_directory, sys.argv[6])
 
     if main_func == 'parallel_main':
         parallel_main()

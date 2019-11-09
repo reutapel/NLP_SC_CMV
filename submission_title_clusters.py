@@ -11,15 +11,52 @@ from submissions_clusters import *
 from bert_model import BertTransformer
 from functools import reduce
 
-num_clusters = 5
+num_clusters = 15
+
+# define paths
+base_directory = os.path.abspath(os.curdir)
+data_directory = os.path.join(base_directory, 'data', 'filter_submissions')
+clusters_directory = os.path.join(base_directory, 'data', 'clusters')
+if not os.path.exists(clusters_directory):
+    os.makedirs(clusters_directory)
 
 
-def merge_check_size(data: pd.DataFrame, clusters: pd.DataFrame) -> pd.DataFrame:
-    data_classes = data.merge(clusters, on='submission_id', how='inner')
-    if data_classes.shape[0] != data.shape[0]:
-        print(f'train data merge with clusters removed rows')
+def split_data_into_clusters(cluster_method: str):
+    """
+    Get train, validation, test data and the class number for each submission based on the chosen cluster method,
+    and create train, test, validation data for each class
+    :param cluster_method: the name of the cluster to use
+    :return:
+    """
+    # load data
+    train_data = pd.read_csv(os.path.join(save_data_directory, 'train_data.csv'))
+    test_data = pd.read_csv(os.path.join(save_data_directory, 'test_data.csv'))
+    validation_data = pd.read_csv(os.path.join(save_data_directory, 'all_valid_data.csv'))
+    clusters_results = pd.read_csv(os.path.join(clusters_directory, f'all_clusters_{num_clusters}_component.csv'))
 
-    return data_classes
+    chosen_cluster_classes = clusters_results[[f'cluster_id_{cluster_method}', 'submission_id']]
+    clusters_data_directory = os.path.join(save_data_directory, f'clusters_data_{cluster_method}')
+    if not os.path.exists(clusters_data_directory):
+        os.makedirs(clusters_data_directory)
+
+    classes = chosen_cluster_classes[f'cluster_id_{cluster_method}'].unique()
+    for class_num in classes:
+        submission_id_class_num = chosen_cluster_classes.loc[
+            chosen_cluster_classes[f'cluster_id_{cluster_method}'] == class_num].submission_id
+        # train data
+        class_train_data = train_data.loc[train_data.submission_id.isin(submission_id_class_num)]
+        class_train_data.to_csv(os.path.join(clusters_data_directory, f'train_data_cluster_{class_num}.csv'))
+        print(f'Train data of class {class_num} has max branch length of: {class_train_data.branch_length.max()}')
+        # test data
+        class_test_data = test_data.loc[test_data.submission_id.isin(submission_id_class_num)]
+        class_test_data.to_csv(os.path.join(clusters_data_directory, f'test_data_cluster_{class_num}.csv'))
+        print(f'Test data of class {class_num} has max branch length of: {class_test_data.branch_length.max()}')
+        # validation data
+        class_val_data = validation_data.loc[validation_data.submission_id.isin(submission_id_class_num)]
+        class_val_data.to_csv(os.path.join(clusters_data_directory, f'validation_data_cluster_{class_num}.csv'))
+        print(f'Validation data of class {class_num} has max branch length of: {class_val_data.branch_length.max()}')
+
+    return
 
 
 class SubmissionsTitleClusters:
@@ -92,49 +129,8 @@ class SubmissionsTitleClusters:
         corpus = list(set([a for b in data_splitted.tolist() for a in b]))
         print('unique words count is: ', len(corpus))
 
-    def split_data_into_clusters(self, cluster_method: str, train_data: pd.DataFrame, test_data: pd.DataFrame,
-                                 validation_data: pd.DataFrame, clusters_results: pd.DataFrame):
-        """
-        Get train, validation, test data and the class number for each submission based on the chosen cluster method,
-        and create train, test, validation data for each class
-        :param cluster_method: the name of the cluster to use
-        :param train_data: the whole train data
-        :param test_data: the whole test data
-        :param validation_data: the whole validation data
-        :param clusters_results: the classes for each submission for each cluster method
-        :return:
-        """
-
-        chosen_cluster_classes = clusters_results[[cluster_method, 'submission_id']]
-        clusters_data_directory = os.path.join(save_data_directory, 'clusters_data')
-        if not os.path.exists(clusters_data_directory):
-            os.makedirs(clusters_data_directory)        # train_data_classes = merge_check_size(train_data, chosen_cluster_classes)
-        # test_data_classes = merge_check_size(test_data, chosen_cluster_classes)
-        # val_data_classes = merge_check_size(validation_data, chosen_cluster_classes)
-
-        max_class_num = chosen_cluster_classes[cluster_method].max()
-        for class_num in range(max_class_num):
-            submission_id_class_num =\
-                chosen_cluster_classes.loc[chosen_cluster_classes[cluster_method] == class_num].submission_id
-            train_data.loc[train_data.submission_id.isin(submission_id_class_num)].to_csv(
-                os.path.join(clusters_data_directory, f'train_data_cluster_{class_num}'))
-            test_data.loc[test_data.submission_id.isin(submission_id_class_num)].to_csv(
-                os.path.join(clusters_data_directory, f'test_data_cluster_{class_num}'))
-            validation_data.loc[validation_data.submission_id.isin(submission_id_class_num)].to_csv(
-                os.path.join(clusters_data_directory, f'validation_data_cluster_{class_num}'))
-
-        return
-
 
 def main():
-
-    # define paths
-    base_directory = os.path.abspath(os.curdir)
-    data_directory = os.path.join(base_directory, 'data', 'filter_submissions')
-    clusters_directory = os.path.join(base_directory, 'data', 'clusters')
-    if not os.path.exists(clusters_directory):
-        os.makedirs(clusters_directory)
-
     # load data
     data_file_path = os.path.join(data_directory, 'comments_label_branch_info_after_remove_no_length_0.csv')
     # comments_label_branch_info_after_remove_no_length_0
@@ -382,5 +378,6 @@ def main():
 
 
 if __name__ == '__main__':
+    split_data_into_clusters('tsne_with_pca_y_gmm')
     main()
 
