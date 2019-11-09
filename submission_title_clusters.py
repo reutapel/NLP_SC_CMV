@@ -186,7 +186,7 @@ def main():
                                                      embedding_size=300,
                                                      data_directory=data_directory, take_bert_pooler=True,
                                                      clusters_directory=clusters_directory)
-    sub_title_cluster_obj.describe_data()
+    # sub_title_cluster_obj.describe_data()
 
     # encode
     # doc2vec

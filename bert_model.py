@@ -74,12 +74,11 @@ class BertTransformer:
         # assuming sentences in text are divided by split token
         if is_list:
             sentence_list = self.split_list_by_token(text, split_token)
-            # current part of text to concatenate sentences
-            current_part = list()
         else:
             sentence_list = text.split(split_token)
-            # current part of text to concatenate sentences
-            current_part = str()
+
+        # current part of text to concatenate sentences
+        current_part = self.variable_initializer(is_list)
 
         # length of current part
         current_part_len = 0
@@ -91,31 +90,39 @@ class BertTransformer:
                 continue
             # length of current sentence
             if is_list:
-                current_tokens_count = len(current_sentence)
+                current_sentence_tokens_count = len(current_sentence)
             else:
-                current_tokens_count = len(current_sentence.split(' '))
-            if current_part_len + current_tokens_count <= max_size:
+                current_sentence_tokens_count = len(current_sentence.split(' '))
+            if current_part_len + current_sentence_tokens_count <= max_size:
                 current_part = current_part + current_sentence
-                current_part_len += current_tokens_count
+                current_part_len += current_sentence_tokens_count
             else:
                 # insert last legitimate part
-                text_parts_list.append(current_part)
+                text_parts_list.append(current_part) if current_part_len > 0 else None
                 # check that current sentence is in legitimate length
                 if len(current_sentence) <= max_size:
                     # update incremental part with last legitimate length of current sentence
                     current_part = current_sentence  # TODO: debug with string and with long comments, make sure doesnt loose parts in the middle
-                    current_part_len = current_tokens_count
+                    current_part_len = current_sentence_tokens_count
                 else:
                     # split current sentence to valid lengths
                     num_split = math.ceil(len(current_sentence) / max_size)
                     splited_current_sentence = [l.tolist() for l in np.array_split(current_sentence, num_split)]
                     text_parts_list += splited_current_sentence
+                    current_part = self.variable_initializer(is_list)
+                    current_part_len = 0
         # in case entire text never crossed max_size or last part didn't..
         if current_part in text_parts_list:
             return text_parts_list
         else:
-            text_parts_list.append(current_part)
+            text_parts_list.append(current_part) if current_part_len > 0 else None
             return text_parts_list
+
+    def variable_initializer(self, is_list):
+        if is_list:
+            return list()
+        else:
+            return str()
 
     def split_list_by_token(self, list_input, token):
 
@@ -177,10 +184,10 @@ class BertTransformer:
         for input_ids_sub in input_ids_list:
             with torch.no_grad():
                 # add id 100 to get pooler
-                    input_ids_sub.insert(0, 100)
-                    pooler = self.model(torch.tensor([input_ids_sub]).to(torch.int64))[0][0][0]
-                    # print('finished BERT encoding, returning BERT pooler', datetime.datetime.now())
-                    poolers_list.append(pd.Series(pooler))
+                input_ids_sub.insert(0, 100)
+                pooler = self.model(torch.tensor([input_ids_sub]).to(torch.int64))[0][0][0]
+                # print('finished BERT encoding, returning BERT pooler', datetime.datetime.now())
+                poolers_list.append(pd.Series(pooler))
         # average all poolers of text
         average_pooler = self.average_vectors(poolers_list)
         return average_pooler
