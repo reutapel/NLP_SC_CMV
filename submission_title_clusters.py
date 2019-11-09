@@ -90,7 +90,7 @@ class SubmissionsTitleClusters:
             poolers_list = list()
             for index, row in tqdm(self.data.iteritems(), total=self.data.shape[0]):
                 # pooler = self.bert_model.bert_text_encoding(row, take_bert_pooler=True)
-                pooler = self.bert_model.get_text_average_pooler_split_bert(row, max_size=512)
+                pooler = self.bert_model.get_text_average_pooler_split_bert(row, max_size=20)
                 poolers_list.append(pd.Series(pooler))
             self.poolers_df = pd.DataFrame(poolers_list)
             # print('finished BERT encoding', datetime.datetime.now())
@@ -134,13 +134,13 @@ def main():
 
     # define paths
     base_directory = os.path.abspath(os.curdir)
-    data_directory = os.path.join(base_directory, 'data', 'filter_submissions')
+    data_directory = os.path.join(base_directory, 'features_to_use')
     clusters_directory = os.path.join(base_directory, 'data', 'clusters')
     if not os.path.exists(clusters_directory):
         os.makedirs(clusters_directory)
 
     # load data
-    data_file_path = os.path.join(data_directory, 'comments_label_branch_info_after_remove_no_length_0.csv')
+    data_file_path = os.path.join(data_directory, 'all_train_data.csv')
     # comments_label_branch_info_after_remove_no_length_0
     all_train_data = pd.read_csv(data_file_path)
     print("raw data shape: ", all_train_data.shape)
@@ -166,7 +166,7 @@ def main():
                                                      embedding_size=300,
                                                      data_directory=data_directory, take_bert_pooler=True,
                                                      clusters_directory=clusters_directory)
-    sub_title_cluster_obj.describe_data()
+    # sub_title_cluster_obj.describe_data()
 
     # encode
     # doc2vec
@@ -386,6 +386,6 @@ def main():
 
 
 if __name__ == '__main__':
-    split_data_into_clusters('tsne_with_pca_y_gmm')
+    # split_data_into_clusters('tsne_with_pca_y_gmm')
     main()
 
