@@ -218,12 +218,11 @@ class CreateFeatures:
                 # load and do the pre process on all_data
                 print(f'{time.asctime(time.localtime(time.time()))}: Loading all data {data_file_name} from {data_dir}')
                 logging.info('Loading all data {} from {}'.format(data_file_name, data_dir))
-                if clusters:
-                    all_data_file_name = data_file_name
+                if clusters:  # if running per clusters - all the data is the cluster data
+                    self.all_data = self.data
                 else:
-                    all_data_file_name = f'all_{data_file_name}'
-                self.all_data = pd.read_csv(os.path.join(data_dir, all_data_file_name + '_data.csv'),
-                                            skipinitialspace=True, usecols=self.data_columns)
+                    self.all_data = pd.read_csv(os.path.join(data_dir, f'all_{data_file_name}_data.csv'),
+                                                skipinitialspace=True, usecols=self.data_columns)
                 self.all_data['comment_created_utc'] = self.all_data['comment_created_utc'].astype(int)
                 self.all_data['time_between'] = self.all_data['comment_created_utc'] -\
                                                 self.all_data['submission_created_utc']
@@ -1471,10 +1470,11 @@ def parallel_main():
     return
 
 
-def manual_parallel_main(load_data, main_doc2vec_vector_size):
+def manual_parallel_main(load_data, main_doc2vec_vector_size, clusters: bool=False):
     """
     :param load_data: if to load all train data and train the models
     :param main_doc2vec_vector_size: if using doc2vec- the size of the output vector
+    :param clusters: do we run per clusters
     :return:
     """
     data_set = sys.argv[2]
@@ -1492,17 +1492,27 @@ def manual_parallel_main(load_data, main_doc2vec_vector_size):
     print('{}: Create object'.format((time.asctime(time.localtime(time.time())))))
     logging.info('Create object')
     inner_max_branch_length = max_branch_length_dict[data_set[:5]]
+    trained_models_dir = os.path.join(train_test_data_directory, 'split_data', data_set, 'trained_models')
+    curr_data_directory = os.path.join(train_test_data_directory, 'split_data', data_set)
 
-    create_features = CreateFeatures(topics_number, inner_max_branch_length, doc2vec_vector_size=main_doc2vec_vector_size)
+    if clusters:
+        trained_models_dir = os.path.join(train_test_data_directory, data_set, 'trained_models')
+        curr_data_directory = os.path.join(train_test_data_directory, data_set)
+        # if working on clusters - load the max_branch_length_dict to get the max branch length for this cluster
+        inner_max_branch_length = joblib.load(os.path.join(curr_data_directory, 'max_branch_length.pickle'))
+
+    create_features = CreateFeatures(topics_number, inner_max_branch_length,
+                                     doc2vec_vector_size=main_doc2vec_vector_size)
 
     print('{}: Loading train data or fitted models'.format((time.asctime(time.localtime(time.time())))))
     logging.info('Loading train data or fitted models')
     # load_data to be False if we already have the trained model and we don't need to load the train data
-    trained_models_dir = os.path.join(train_test_data_directory, 'split_data', data_set, 'trained_models')
-    curr_data_directory = os.path.join(train_test_data_directory, 'split_data', data_set)
+
+    if not os.path.exists(trained_models_dir):
+        os.makedirs(trained_models_dir)
 
     create_features.create_data('train', is_train=True, load_data=load_data, trained_models_dir=trained_models_dir,
-                                data_dir=curr_data_directory)
+                                data_dir=curr_data_directory, clusters=clusters)
 
     features_dir_path = os.path.join(features_directory, data_set)
     if not os.path.exists(features_dir_path):
@@ -1510,7 +1520,7 @@ def manual_parallel_main(load_data, main_doc2vec_vector_size):
 
     print('{}: Loading data'.format((time.asctime(time.localtime(time.time())))))
     logging.info('Loading data')
-    create_features.create_data(data_set[:5], is_train=False, data_dir=curr_data_directory)
+    create_features.create_data(data_set[:5], is_train=False, data_dir=curr_data_directory, clusters=clusters)
 
     print('{}: Finish loading the data. Data sizes: {}. Start create features'.
           format((time.asctime(time.localtime(time.time()))), create_features.data.shape))
@@ -1552,13 +1562,19 @@ if __name__ == '__main__':
 
     if len(sys.argv) > 6:  # run on clusters
         train_test_data_directory = os.path.join(train_test_data_directory, sys.argv[6])
+        features_directory = os.path.join(features_directory, sys.argv[6])
+        if not os.path.exists(features_directory):
+            os.makedirs(features_directory)
+        run_clusters = True
+    else:
+        run_clusters = False
 
     if main_func == 'parallel_main':
         parallel_main()
     elif main_func == 'not_parallel_main':
         not_parallel_main(glob_doc2vec_vector_size)
     elif main_func == 'manual_parallel_main':
-        manual_parallel_main(main_load_data, glob_doc2vec_vector_size)
+        manual_parallel_main(main_load_data, glob_doc2vec_vector_size, clusters=run_clusters)
     else:
         print(f'{main_func} is not main function in this code')
         logging.info('{} is not main function in this code'.format(main_func))
