@@ -175,7 +175,7 @@ class CreateFeatures:
         return
 
     def create_data(self, data_file_name, is_train, load_data=True, data=None, data_dir=train_test_data_directory,
-                    trained_models_dir=trained_models_directory, all_data=None):
+                    trained_models_dir=trained_models_directory, all_data=None, clusters: bool = False):
         """
         This function create the data based on the data_file_name
         :param str data_file_name: the data to create (train, test, val)
@@ -185,6 +185,7 @@ class CreateFeatures:
         :param bool load_data: if we want to load the data or no need to
         :param trained_models_dir: the path of the trained models directory
         :param all_data: all the data of the data set (train, test, val)- no split data
+        :param clusters: if running per clusters
         :return:
         """
         self.data_file_name = data_file_name
@@ -215,7 +216,11 @@ class CreateFeatures:
                 # load and do the pre process on all_data
                 print(f'{time.asctime(time.localtime(time.time()))}: Loading all data {data_file_name} from {data_dir}')
                 logging.info('Loading all data {} from {}'.format(data_file_name, data_dir))
-                self.all_data = pd.read_csv(os.path.join(data_dir, 'all_' + data_file_name + '_data.csv'),
+                if clusters:
+                    all_data_file_name = data_file_name
+                else:
+                    all_data_file_name = f'all_{data_file_name}'
+                self.all_data = pd.read_csv(os.path.join(data_dir, all_data_file_name + '_data.csv'),
                                             skipinitialspace=True, usecols=self.data_columns)
                 self.all_data['comment_created_utc'] = self.all_data['comment_created_utc'].astype(int)
                 self.all_data['time_between'] = self.all_data['comment_created_utc'] -\

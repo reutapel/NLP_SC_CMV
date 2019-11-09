@@ -321,7 +321,7 @@ def main():
 
     # print top word of each cluster
     top_n = 30
-    submission_col_name = 'submission_title_x'
+    submission_col_name = 'submission_title'
     for method_name in all_clusters.columns.difference(submission_col_name):
         for cluster_num in all_clusters[method_name].unique():
             get_cluster_top_words(all_clusters.loc[all_clusters[method_name] == cluster_num,
