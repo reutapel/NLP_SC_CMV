@@ -420,10 +420,16 @@ def replace_0_with_list(df, len_list_in_cell):
 
 def main(is_cuda):
 
-    debug = False
+    concat_datasets = True
 
-    if not debug:
+    if concat_datasets:
         import_split_data_obj = ImportSplitData()
+        for dataset, folder_list in import_split_data_obj.data_folders_dict.items():
+            for folder in folder_list:
+
+    else:
+        import_split_data_obj = ImportSplitData()
+        import_split_data_obj.load_join_data()
         all_data_dict = import_split_data_obj.sort_joined_data()
 
         # load train data
@@ -462,45 +468,14 @@ def main(is_cuda):
             branches_lengths_list_valid = all_data_dict['valid']['branches_lengths_list_valid']
             len_df_valid = all_data_dict['valid']['len_df']
 
-    else:
-        # DEBUG
-        # load train data
-        text = {0: [[1., 2.], [3., 4.], [5., 6.]], 1: [[7., 8.], [9., 1.], [1., 5.]], 2: [[1., 4.], [1., 6.], [0., 0.]],
-                3: [[9., 2.], [0., 0.], [0., 0.]]}
-        comment_features = {0: [[10., 20., 34.], [30., 40., 54.], [50., 60., 70.]], 1: [[70., 80., 82.], [90., 10., 43.],
-                                                                                         [11., 12., 65.]],
-                            2: [[13., 14., 76.], [15., 16., 17.], [0., 0., 0.]],
-                            3: [[19., 20., 65.], [0., 0., 0.], [0., 0., 0.]]}
-        users_profiles = {0: [[111., 222.], [333., 444.], [555., 666.]], 1: [[777., 888.], [999., 100.], [111., 122.]],
-                          2: [[133., 144.], [155., 166.], [0., 0.]],
-                          3: [[190., 200.], [0., 0.], [0., 0.]]}
-        branch_comments_embedded_text_df_train = pd.DataFrame(data=text)
-        branch_comments_features_df_train = pd.DataFrame(data=comment_features)
-        branch_comments_user_profiles_df_train = pd.DataFrame(data=users_profiles)
-        branch_submission_dict_train = {0: ['6ax', [-4., 4., -44., 44.]], 1: ['6ax', [-5., 5., -55., 55.]], 2: ['3f9',
-                                                                                                                [-2., 2., -22., 22.]]}
-        submission_data_dict_train = {'6ax': [[12., 21.], [6., 9.], [1., 11., 111.]], '3f9': [[13., 31.], [66., 99.],
-                                                                                              [1., 11., 111.]]}
-        branch_deltas_data_dict_train = {0: [1., 2, [1, 3]], 1: [0., 0, []], 2: [1., 1, [1]]}
-        branches_lengths_list_train = [4, 3, 2]
 
-        # load test data
-        branch_comments_embedded_text_df_test = pd.DataFrame(data=text)
-        branch_comments_features_df_test = pd.DataFrame(data=comment_features)
-        branch_comments_user_profiles_df_test = pd.DataFrame(data=users_profiles)
-        branch_submission_dict_test = {0: ['6ax', [-4, 4, -44, 44]], 1: ['6ax', [-5, 5, -55, 55]], 2: ['3f9', [-2, 2,
-                                                                                                               -22, 22]]}
-        submission_data_dict_test = {'6ax': [[12, 21], [6, 9], [1, 11, 111]], '3f9': [[13, 31], [66, 99], [1, 11, 111]]}
-        branch_deltas_data_dict_test = {0: [1, 2, ], 1: [0, 0, 0], 2: [1, 1, ]}
-        branches_lengths_list_test = [4, 3, 2]
+        train_data = branch_comments_embedded_text_df_train, branch_comments_features_df_train, \
+                     branch_comments_user_profiles_df_train, branch_submission_dict_train, submission_data_dict_train, \
+                     branch_deltas_data_dict_train, branches_lengths_list_train, len_df_train
 
-    train_data = branch_comments_embedded_text_df_train, branch_comments_features_df_train, \
-                 branch_comments_user_profiles_df_train, branch_submission_dict_train, submission_data_dict_train, \
-                 branch_deltas_data_dict_train, branches_lengths_list_train, len_df_train
-
-    test_data = branch_comments_embedded_text_df_test, branch_comments_features_df_test, \
-                branch_comments_user_profiles_df_test, branch_submission_dict_test, submission_data_dict_test, \
-                branch_deltas_data_dict_test, branches_lengths_list_test, len_df_test
+        test_data = branch_comments_embedded_text_df_test, branch_comments_features_df_test, \
+                    branch_comments_user_profiles_df_test, branch_submission_dict_test, submission_data_dict_test, \
+                    branch_deltas_data_dict_test, branches_lengths_list_test, len_df_test
 
     # define hyper parameters of learning phase
     # log makes differences expand to higher numbers because of it's behaivor between 0 to 1

@@ -3,10 +3,11 @@ import os
 from collections import defaultdict
 import joblib
 from time import gmtime, strftime
-
+import torchnet as tnt
 
 class ImportSplitData:
-    """"This class implements the import, join and sort of all the data parts for each dataset """
+    """"This class implements the import, join and sort of all the data parts in folders for each dataset, assuming
+    numbered folders for train, testi, valid, with same list of objects inside """
 
     def __init__(self):
 
@@ -17,7 +18,6 @@ class ImportSplitData:
         self.all_data_dict = defaultdict(dict)
 
         self.collect_data_folders()
-        self.load_join_data()
 
     def collect_data_folders(self):
         # get names of all data folders
@@ -64,7 +64,7 @@ class ImportSplitData:
                 first_folder = False
 
     def sort_joined_data(self):
-        # for each dataset
+        # for each dataset train/testi/valid
         # 1. reindex Dataframes by new joined & sorted len list df
         # 2. replace dictionary keys in new order
         # 3. update len sorted list
