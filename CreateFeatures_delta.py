@@ -771,23 +771,22 @@ class CreateFeatures:
         """
 
         # create branch_deltas_data_dict
-        file_path = os.path.join(features_dir_path, 'branch_deltas_data_dict_' + self.data_file_name + '.pickle')
+        file_path = os.path.join(features_dir_path, 'branch_deltas_data_dict.pickle')
         if not os.path.isfile(file_path):
             self.create_branch_deltas_data_dict()
             with open(file_path, 'wb') as handle:
                 pickle.dump(self.branch_deltas_data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         # create branch comments text data frame
-        file_path = os.path.join(features_dir_path, 'branch_comments_embedded_text_df_' + self.data_file_name + '.pkl')
+        file_path = os.path.join(features_dir_path, 'branch_comments_embedded_text_df.pkl')
         if not os.path.isfile(file_path):
             self.create_branch_comments_text()
             # save_as_pickled_object(self.branch_comments_embedded_text_df, file_path + '.pkl')
             joblib.dump(self.branch_comments_embedded_text_df, file_path)
 
         # create branch_comments_features_df and branch_comments_user_profiles_df
-        file_path1 = os.path.join(features_dir_path, 'branch_comments_features_df_' + self.data_file_name + '.pkl')
-        file_path2 = os.path.join(features_dir_path, 'branch_comments_user_profiles_df_' +
-                                  self.data_file_name + '.pkl')
+        file_path1 = os.path.join(features_dir_path, 'branch_comments_features_df.pkl')
+        file_path2 = os.path.join(features_dir_path, 'branch_comments_user_profiles_df_.pkl')
         if not os.path.isfile(file_path1) or not os.path.isfile(file_path2):
             self.create_branch_comments_features_df()
             # joblib.dump(self.branch_comments_features_df, file_path1 + '.compressed', compress=True)
@@ -796,21 +795,21 @@ class CreateFeatures:
             joblib.dump(self.branch_comments_user_profiles_df, file_path2)
 
         # create submission data dict
-        file_path = os.path.join(features_dir_path, 'submission_data_dict_' + self.data_file_name + '.pickle')
+        file_path = os.path.join(features_dir_path, 'submission_data_dict.pickle')
         if not os.path.isfile(file_path):
             self.create_submission_submitter_features()
             with open(file_path, 'wb') as handle:
                 pickle.dump(self.submission_data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         # create branch features
-        file_path = os.path.join(features_dir_path, 'branch_submission_dict_' + self.data_file_name + '.pickle')
+        file_path = os.path.join(features_dir_path, 'branch_submission_dict.pickle')
         if not os.path.isfile(file_path):
             self.create_branch_submission_dict()
             with open(file_path, 'wb') as handle:
                 pickle.dump(self.branch_submission_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         # save branches length
-        with open(os.path.join(features_dir_path, 'branches_lengths_list_' + self.data_file_name + '.txt'), 'wb')\
+        with open(os.path.join(features_dir_path, 'branches_lengths_list.txt'), 'wb')\
                 as handle:
             pickle.dump(self.branches_lengths_list, handle, protocol=pickle.HIGHEST_PROTOCOL)
 

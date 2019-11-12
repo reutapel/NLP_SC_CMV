@@ -22,6 +22,7 @@ import numpy as np
 import math
 from collections import defaultdict
 from early_stopping_pytorch.pytorchtools import EarlyStopping
+import utils
 
 # old_stdout = sys.stdout
 # log_file = open("train_model.log", "w")
@@ -453,47 +454,18 @@ def main(is_cuda, cluster_dir=None):
         # load train data
         if 'train' in all_data_dict.keys():
             print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create train data')
-            branch_comments_embedded_text_df_train = all_data_dict['train']['branch_comments_embedded_text_df_train']
-            branch_comments_features_df_train = all_data_dict['train']['branch_comments_features_df_train']
-            branch_comments_user_profiles_df_train = all_data_dict['train']['branch_comments_user_profiles_df_train']
-            branch_submission_dict_train = all_data_dict['train']['branch_submission_dict_train']
-            submission_data_dict_train = all_data_dict['train']['submission_data_dict_train']
-            branch_deltas_data_dict_train = all_data_dict['train']['branch_deltas_data_dict_train']
-            branches_lengths_list_train = all_data_dict['train']['branches_lengths_list_train']
-            len_df_train = all_data_dict['train']['len_df']
+            train_data = utils.create_dataset_dict('train', all_data_dict)
 
         # load test data
         if 'testi' in all_data_dict.keys():
             print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create test data')
-            branch_comments_embedded_text_df_test = all_data_dict['testi']['branch_comments_embedded_text_df_testi']
-            branch_comments_features_df_test = all_data_dict['testi']['branch_comments_features_df_testi']
-            branch_comments_user_profiles_df_test = all_data_dict['testi']['branch_comments_user_profiles_df_testi']
-            branch_submission_dict_test = all_data_dict['testi']['branch_submission_dict_testi']
-            submission_data_dict_test = all_data_dict['testi']['submission_data_dict_testi']
-            branch_deltas_data_dict_test = all_data_dict['testi']['branch_deltas_data_dict_testi']
-            branches_lengths_list_test = all_data_dict['testi']['branches_lengths_list_testi']
-            len_df_test = all_data_dict['testi']['len_df']
+            test_data = utils.create_dataset_dict('test', all_data_dict)
+
 
         # load valid data
         if 'valid' in all_data_dict.keys():
             print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create validation data')
-            branch_comments_embedded_text_df_valid = all_data_dict['valid']['branch_comments_embedded_text_df_valid']
-            branch_comments_features_df_valid = all_data_dict['valid']['branch_comments_features_df_valid']
-            branch_comments_user_profiles_df_valid = all_data_dict['valid']['branch_comments_user_profiles_df_valid']
-            branch_submission_dict_valid = all_data_dict['valid']['branch_submission_dict_valid']
-            submission_data_dict_valid = all_data_dict['valid']['submission_data_dict_valid']
-            branch_deltas_data_dict_valid = all_data_dict['valid']['branch_deltas_data_dict_valid']
-            branches_lengths_list_valid = all_data_dict['valid']['branches_lengths_list_valid']
-            len_df_valid = all_data_dict['valid']['len_df']
-
-
-        train_data = branch_comments_embedded_text_df_train, branch_comments_features_df_train, \
-                     branch_comments_user_profiles_df_train, branch_submission_dict_train, submission_data_dict_train, \
-                     branch_deltas_data_dict_train, branches_lengths_list_train, len_df_train
-
-        test_data = branch_comments_embedded_text_df_test, branch_comments_features_df_test, \
-                    branch_comments_user_profiles_df_test, branch_submission_dict_test, submission_data_dict_test, \
-                    branch_deltas_data_dict_test, branches_lengths_list_test, len_df_test
+            validation_data = utils.create_dataset_dict('valid', all_data_dict)
 
     # define hyper parameters of learning phase
     # log makes differences expand to higher numbers because of it's behaivor between 0 to 1
@@ -508,8 +480,9 @@ def main(is_cuda, cluster_dir=None):
     fc2_dropout = 0.5
 
     # define LSTM layers hyperparameters
+    # TODO: define sizes according to concat dataset flag
     print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} define LSTM layers hyperparameters')
-    init_lstm_text = InitLstm(input_size=len(branch_comments_embedded_text_df_train.iloc[0, 0]), hidden_size=20,
+    init_lstm_text = InitLstm(input_size=len(train_data['branch_comments_embedded_text_df'].iloc[0, 0]), hidden_size=20,
                               num_layers=2, batch_first=True)
     init_lstm_comments = InitLstm(input_size=len(branch_comments_features_df_train.iloc[0, 0]), hidden_size=10,
                                   num_layers=2, batch_first=True)

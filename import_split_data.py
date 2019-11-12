@@ -73,15 +73,8 @@ class ImportSplitData:
         # 3. update len sorted list
         print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} sort joined data')
         for dataset in self.data_folders_dict.keys():
-            if dataset == 'train':
-                dataset_suffix = 'train'
-            elif dataset == 'testi':
-                dataset_suffix = 'testi'
-            else:
-                dataset_suffix = 'valid'
-            len_df = pd.DataFrame(data=self.all_data_dict[dataset]['branches_lengths_list_' + dataset_suffix],
-                                  index=self.all_data_dict[dataset]['branch_comments_embedded_text_df_'
-                                  + dataset_suffix].index)
+            len_df = pd.DataFrame(data=self.all_data_dict[dataset]['branches_lengths_list'],
+                                  index=self.all_data_dict[dataset]['branch_comments_embedded_text_df'].index)
             len_df.sort_values(by=0, ascending=False, inplace=True)
             sorted_index_list = list(len_df.index)
             self.all_data_dict[dataset]['len_df'] = len_df
@@ -94,7 +87,7 @@ class ImportSplitData:
         return self.all_data_dict
 
 
-def load_data(folder_path: str) -> list:
+def load_data(folder_path: str) -> dict:
     """
     Load data from a specific folder
     :param folder_path: str: the folder's path to load from
@@ -102,7 +95,6 @@ def load_data(folder_path: str) -> list:
     """
     # iterate over all files in each dataset folder
     data_dict = dict()
-    data_list = list()
     for filename in os.listdir(folder_path):
         print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} load {filename} from {folder_path}')
         if filename == '.DS_Store':
@@ -112,16 +104,8 @@ def load_data(folder_path: str) -> list:
         file = joblib.load(file_path)
         data_dict[filename.split('.', 1)[0]] = file
 
-    if 'train' in folder_path:
-        dataset_suffix = 'train'
-    elif 'testi' in folder_path:
-        dataset_suffix = 'testi'
-    else:
-        dataset_suffix = 'valid'
-    len_df = pd.DataFrame(data=data_dict[f'branches_lengths_list_{dataset_suffix}'],
-                          index=data_dict[f'branch_comments_embedded_text_df_{dataset_suffix}'].index)
+    len_df = pd.DataFrame(data=data_dict[f'branches_lengths_list'],
+                          index=data_dict[f'branch_comments_embedded_text_df'].index)
     data_dict['len_df'] = len_df
 
-
-
-    return data_list
+    return data_dict
