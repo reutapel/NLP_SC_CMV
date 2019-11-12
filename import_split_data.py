@@ -9,9 +9,12 @@ class ImportSplitData:
     """"This class implements the import, join and sort of all the data parts in folders for each dataset, assuming
     numbered folders for train, testi, valid, with same list of objects inside """
 
-    def __init__(self):
+    def __init__(self, cluster_dir=None):
 
-        self.folder_list = os.listdir(os.path.join(os.getcwd(), 'features_to_use'))
+        if cluster_dir is None:
+            self.folder_list = os.listdir(os.path.join(os.getcwd(), 'features_to_use'))
+        else:
+            self.folder_list = os.listdir(os.path.join(os.getcwd(), 'clusters_features', cluster_dir))
         print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} self.folder_list {self.folder_list}')
 
         self.data_folders_dict = defaultdict(list)
@@ -70,15 +73,8 @@ class ImportSplitData:
         # 3. update len sorted list
         print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} sort joined data')
         for dataset in self.data_folders_dict.keys():
-            if dataset == 'train':
-                dataset_suffix = 'train'
-            elif dataset == 'testi':
-                dataset_suffix = 'testi'
-            else:
-                dataset_suffix = 'valid'
-            len_df = pd.DataFrame(data=self.all_data_dict[dataset]['branches_lengths_list_' + dataset_suffix],
-                                  index=self.all_data_dict[dataset]['branch_comments_embedded_text_df_'
-                                  + dataset_suffix].index)
+            len_df = pd.DataFrame(data=self.all_data_dict[dataset]['branches_lengths_list'],
+                                  index=self.all_data_dict[dataset]['branch_comments_embedded_text_df'].index)
             len_df.sort_values(by=0, ascending=False, inplace=True)
             sorted_index_list = list(len_df.index)
             self.all_data_dict[dataset]['len_df'] = len_df
@@ -89,3 +85,27 @@ class ImportSplitData:
                     self.all_data_dict[dataset][var] = len_df[0].tolist()
 
         return self.all_data_dict
+
+
+def load_data(folder_path: str) -> dict:
+    """
+    Load data from a specific folder
+    :param folder_path: str: the folder's path to load from
+    :return: dict: {file_name: file} with all the data in the folder
+    """
+    # iterate over all files in each dataset folder
+    data_dict = dict()
+    for filename in os.listdir(folder_path):
+        print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} load {filename} from {folder_path}')
+        if filename == '.DS_Store':
+            continue
+        # connect all part of files of the same dataset
+        file_path = os.path.join(folder_path, filename)
+        file = joblib.load(file_path)
+        data_dict[filename.split('.', 1)[0]] = file
+
+    len_df = pd.DataFrame(data=data_dict[f'branches_lengths_list'],
+                          index=data_dict[f'branch_comments_embedded_text_df'].index)
+    data_dict['len_df'] = len_df
+
+    return data_dict

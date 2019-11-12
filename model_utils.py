@@ -13,37 +13,37 @@ class CustomDataset(dt.Dataset):
     """
     Class for handling data before modeling, pre-process and loading
     """
-    def __init__(self, branch_comments_embedded_text_df, branch_comments_features_df, branch_comments_user_profiles_df,
-                 branch_submission_dict, submission_data_dict, branch_deltas_data_dict, branches_lengths_list, len_df):
+    def __init__(self, data_dict: dict):
         """
         this method uploads and organize all elements in the data for the different parts of the model
         all parts of data, are ordered by length of branch - descending, rest of entries are filled with zeros
-        :param branch_comments_embedded_text_df: raw text embedded, df M*N, M - number of branches, N - maximum number
-        of comments in branch, content - embedded vectors of raw text
-        :param branch_comments_features_df: features of the comments, df M*N, content - comment features
-        :param branch_comments_user_profiles_df: profiles of the users, df M*N, content - user's features
-        :param branch_submission_dict: {branch index: [submission id, [branch features]]}
-        :param submission_data_dict: {submission id: [submission text, submission features, submitter profile features]}
-        :param branch_deltas_data_dict: {branch index:
-        [is delta in branch, number of deltas in branch, [deltas comments location in branch]]}
-        :param branches_lengths_list: actual branches lengths without padding for the batch learning
-        :param len_df: a sorted df that contains the original branch indexes as index and their length in sorted column
+        :param dict with all the following data:
+            branch_comments_embedded_text_df: raw text embedded, df M*N, M - number of branches, N - maximum number
+            of comments in branch, content - embedded vectors of raw text
+             branch_comments_features_df: features of the comments, df M*N, content - comment features
+             branch_comments_user_profiles_df: profiles of the users, df M*N, content - user's features
+             branch_submission_dict: {branch index: [submission id, [branch features]]}
+             submission_data_dict: {submission id: [submission text, submission features, submitter profile features]}
+             branch_deltas_data_dict: {branch index:
+            [is delta in branch, number of deltas in branch, [deltas comments location in branch]]}
+             branches_lengths_list: actual branches lengths without padding for the batch learning
+             len_df: a sorted df that contains the original branch indexes as index and their length in sorted column
         """
 
-        self.branch_comments_embedded_text_tensor = self.df_to_tensor(branch_comments_embedded_text_df)
+        self.branch_comments_embedded_text_tensor = self.df_to_tensor(data_dict['branch_comments_embedded_text_df'])
 
-        self.branch_comments_features_tensor = self.df_to_tensor(branch_comments_features_df)
+        self.branch_comments_features_tensor = self.df_to_tensor(data_dict['branch_comments_features_df'])
 
-        self.branch_comments_user_profiles_tensor = self.df_to_tensor(branch_comments_user_profiles_df)
+        self.branch_comments_user_profiles_tensor = self.df_to_tensor(data_dict['branch_comments_user_profiles_df'])
 
-        self.branch_submission_dict = branch_submission_dict
-        self.submission_data_dict = submission_data_dict
+        self.branch_submission_dict = data_dict['branch_submission_dict']
+        self.submission_data_dict = data_dict['submission_data_dict']
 
-        self.branch_deltas_data_dict = branch_deltas_data_dict
+        self.branch_deltas_data_dict = data_dict['branch_deltas_data_dict']
 
-        self.branches_lengths = branches_lengths_list
+        self.branches_lengths = data_dict['branches_lengths_list']
 
-        self.len_df = len_df
+        self.len_df = data_dict['len_df']
 
     def __getitem__(self, index):
         """

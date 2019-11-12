@@ -21,6 +21,8 @@ from datetime import datetime
 import numpy as np
 import math
 from collections import defaultdict
+from early_stopping_pytorch.pytorchtools import EarlyStopping
+import utils
 
 # old_stdout = sys.stdout
 # log_file = open("train_model.log", "w")
@@ -148,7 +150,7 @@ class TrainModel:
 
         return dt.DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True)
 
-    def train(self, mu=None):
+    def train(self, mu=None, patience=10):
         """
         train the model on train data by batches iterate all epochs
         :param: float mu: mu for creating weight in loss
@@ -162,6 +164,9 @@ class TrainModel:
             print('run cuda')
 
         self.model.train()
+
+        # initialize the early_stopping object
+        early_stopping = EarlyStopping(patience=patience, verbose=True)
 
         # device = tr.device("cuda" if tr.cuda.is_available() else "cpu")
 
@@ -247,6 +252,15 @@ class TrainModel:
             # calculate measurements on train data
             self.calc_measurements(correct, total, train_labels, train_predictions, train_probabilities, epoch,  "train")
             self.test(epoch)
+
+            # early_stopping needs the validation loss to check if it has decresed,
+            # and if it has, it will make a checkpoint of the current model
+            early_stopping(self.test_loss_list[epoch], self.model)
+
+            if early_stopping.early_stop:
+                print("Early stopping")
+                break
+
             self.model.train()
 
         # save the model
@@ -368,6 +382,11 @@ class TrainModel:
         fig, ax = plt.subplots()
         ax.plot(list(range(epoch_count)), train_loss, 'g--', label='train')
         ax.plot(list(range(epoch_count)), test_loss, 'b-', label='test')
+
+        # find position of lowest validation loss
+        minposs = test_loss.index(min(test_loss)) + 1
+        plt.axvline(minposs, linestyle='--', color='r', label='Early Stopping Checkpoint')
+
         ax.legend()
         plt.title(measurement + ' per epoch')
         plt.legend(['Train', 'Test'])
@@ -418,7 +437,7 @@ def replace_0_with_list(df, len_list_in_cell):
     return df
 
 
-def main(is_cuda):
+def main(is_cuda, cluster_dir=None):
 
     concat_datasets = True
 
@@ -448,47 +467,18 @@ def main(is_cuda):
         # load train data
         if 'train' in all_data_dict.keys():
             print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create train data')
-            branch_comments_embedded_text_df_train = all_data_dict['train']['branch_comments_embedded_text_df_train']
-            branch_comments_features_df_train = all_data_dict['train']['branch_comments_features_df_train']
-            branch_comments_user_profiles_df_train = all_data_dict['train']['branch_comments_user_profiles_df_train']
-            branch_submission_dict_train = all_data_dict['train']['branch_submission_dict_train']
-            submission_data_dict_train = all_data_dict['train']['submission_data_dict_train']
-            branch_deltas_data_dict_train = all_data_dict['train']['branch_deltas_data_dict_train']
-            branches_lengths_list_train = all_data_dict['train']['branches_lengths_list_train']
-            len_df_train = all_data_dict['train']['len_df']
+            train_data = utils.create_dataset_dict('train', all_data_dict)
 
         # load test data
         if 'testi' in all_data_dict.keys():
             print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create test data')
-            branch_comments_embedded_text_df_test = all_data_dict['testi']['branch_comments_embedded_text_df_testi']
-            branch_comments_features_df_test = all_data_dict['testi']['branch_comments_features_df_testi']
-            branch_comments_user_profiles_df_test = all_data_dict['testi']['branch_comments_user_profiles_df_testi']
-            branch_submission_dict_test = all_data_dict['testi']['branch_submission_dict_testi']
-            submission_data_dict_test = all_data_dict['testi']['submission_data_dict_testi']
-            branch_deltas_data_dict_test = all_data_dict['testi']['branch_deltas_data_dict_testi']
-            branches_lengths_list_test = all_data_dict['testi']['branches_lengths_list_testi']
-            len_df_test = all_data_dict['testi']['len_df']
+            test_data = utils.create_dataset_dict('test', all_data_dict)
+
 
         # load valid data
         if 'valid' in all_data_dict.keys():
             print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create validation data')
-            branch_comments_embedded_text_df_valid = all_data_dict['valid']['branch_comments_embedded_text_df_valid']
-            branch_comments_features_df_valid = all_data_dict['valid']['branch_comments_features_df_valid']
-            branch_comments_user_profiles_df_valid = all_data_dict['valid']['branch_comments_user_profiles_df_valid']
-            branch_submission_dict_valid = all_data_dict['valid']['branch_submission_dict_valid']
-            submission_data_dict_valid = all_data_dict['valid']['submission_data_dict_valid']
-            branch_deltas_data_dict_valid = all_data_dict['valid']['branch_deltas_data_dict_valid']
-            branches_lengths_list_valid = all_data_dict['valid']['branches_lengths_list_valid']
-            len_df_valid = all_data_dict['valid']['len_df']
-
-
-        train_data = branch_comments_embedded_text_df_train, branch_comments_features_df_train, \
-                     branch_comments_user_profiles_df_train, branch_submission_dict_train, submission_data_dict_train, \
-                     branch_deltas_data_dict_train, branches_lengths_list_train, len_df_train
-
-        test_data = branch_comments_embedded_text_df_test, branch_comments_features_df_test, \
-                    branch_comments_user_profiles_df_test, branch_submission_dict_test, submission_data_dict_test, \
-                    branch_deltas_data_dict_test, branches_lengths_list_test, len_df_test
+            validation_data = utils.create_dataset_dict('valid', all_data_dict)
 
     # define hyper parameters of learning phase
     # log makes differences expand to higher numbers because of it's behaivor between 0 to 1
@@ -503,8 +493,9 @@ def main(is_cuda):
     fc2_dropout = 0.5
 
     # define LSTM layers hyperparameters
+    # TODO: define sizes according to concat dataset flag
     print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} define LSTM layers hyperparameters')
-    init_lstm_text = InitLstm(input_size=len(branch_comments_embedded_text_df_train.iloc[0, 0]), hidden_size=20,
+    init_lstm_text = InitLstm(input_size=len(train_data['branch_comments_embedded_text_df'].iloc[0, 0]), hidden_size=20,
                               num_layers=2, batch_first=True)
     init_lstm_comments = InitLstm(input_size=len(branch_comments_features_df_train.iloc[0, 0]), hidden_size=10,
                                   num_layers=2, batch_first=True)
@@ -576,9 +567,17 @@ def main(is_cuda):
 
 
 if __name__ == '__main__':
+    """
+    sys.argv[1] = main_is_cuda
+    sys.argv[2] = cluster directory name
+    """
     main_is_cuda = sys.argv[1]
+    if len(sys.argv) > 2:
+        cluster_directory = sys.argv[2]
+    else:
+        cluster_directory = None
     print(f'running with cuda: {main_is_cuda}')
     if main_is_cuda == 'False':
         main_is_cuda = False
-    main(main_is_cuda)
+    main(main_is_cuda, cluster_directory)
     print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} Done!')

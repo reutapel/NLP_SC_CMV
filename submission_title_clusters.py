@@ -11,7 +11,7 @@ from submissions_clusters import *
 from bert_model import BertTransformer
 from functools import reduce
 
-num_clusters = 15
+num_clusters = 20
 
 # define paths
 base_directory = os.path.abspath(os.curdir)
@@ -28,10 +28,11 @@ def split_data_into_clusters(cluster_method: str):
     :param cluster_method: the name of the cluster to use
     :return:
     """
+    print(f'Start split data into clusters for cluster method {cluster_method}')
     # load data
     train_data = pd.read_csv(os.path.join(save_data_directory, 'train_data.csv'))
     test_data = pd.read_csv(os.path.join(save_data_directory, 'test_data.csv'))
-    validation_data = pd.read_csv(os.path.join(save_data_directory, 'all_valid_data.csv'))
+    validation_data = pd.read_csv(os.path.join(save_data_directory, 'val_data.csv'))
     clusters_results = pd.read_csv(os.path.join(clusters_directory, f'all_clusters_{num_clusters}_component.csv'))
 
     chosen_cluster_classes = clusters_results[[f'cluster_id_{cluster_method}', 'submission_id']]
@@ -44,16 +45,35 @@ def split_data_into_clusters(cluster_method: str):
         submission_id_class_num = chosen_cluster_classes.loc[
             chosen_cluster_classes[f'cluster_id_{cluster_method}'] == class_num].submission_id
         # train data
+        # create directory
+        train_data_cluster_dir = os.path.join(clusters_data_directory, f'train_data_cluster_{class_num}')
+        if not os.path.exists(train_data_cluster_dir):
+            os.makedirs(train_data_cluster_dir)
+        # create and save data
         class_train_data = train_data.loc[train_data.submission_id.isin(submission_id_class_num)]
-        class_train_data.to_csv(os.path.join(clusters_data_directory, f'train_data_cluster_{class_num}.csv'))
+        class_train_data.to_csv(os.path.join(train_data_cluster_dir, f'train_data.csv'))
+        joblib.dump(class_train_data.branch_length.max(),
+                    os.path.join(train_data_cluster_dir, 'max_branch_length.pickle'))
         print(f'Train data of class {class_num} has max branch length of: {class_train_data.branch_length.max()}')
         # test data
+        # create directory
+        test_data_cluster_dir = os.path.join(clusters_data_directory, f'testi_data_cluster_{class_num}')
+        if not os.path.exists(test_data_cluster_dir):
+            os.makedirs(test_data_cluster_dir)
+        # create and save data
         class_test_data = test_data.loc[test_data.submission_id.isin(submission_id_class_num)]
-        class_test_data.to_csv(os.path.join(clusters_data_directory, f'test_data_cluster_{class_num}.csv'))
+        class_test_data.to_csv(os.path.join(test_data_cluster_dir, f'testi_data.csv'))
+        joblib.dump(class_test_data.branch_length.max(), os.path.join(test_data_cluster_dir, 'max_branch_length.pickle'))
         print(f'Test data of class {class_num} has max branch length of: {class_test_data.branch_length.max()}')
         # validation data
+        # create directory
+        val_data_cluster_dir = os.path.join(clusters_data_directory, f'valid_data_cluster_{class_num}')
+        if not os.path.exists(val_data_cluster_dir):
+            os.makedirs(val_data_cluster_dir)
+        # create and save data
         class_val_data = validation_data.loc[validation_data.submission_id.isin(submission_id_class_num)]
-        class_val_data.to_csv(os.path.join(clusters_data_directory, f'validation_data_cluster_{class_num}.csv'))
+        class_val_data.to_csv(os.path.join(val_data_cluster_dir, f'valid_data.csv'))
+        joblib.dump(class_val_data.branch_length.max(), os.path.join(val_data_cluster_dir, 'max_branch_length.pickle'))
         print(f'Validation data of class {class_num} has max branch length of: {class_val_data.branch_length.max()}')
 
     return
@@ -90,7 +110,7 @@ class SubmissionsTitleClusters:
             poolers_list = list()
             for index, row in tqdm(self.data.iteritems(), total=self.data.shape[0]):
                 # pooler = self.bert_model.bert_text_encoding(row, take_bert_pooler=True)
-                pooler = self.bert_model.get_text_average_pooler_split_bert(row, max_size=20)
+                pooler = self.bert_model.get_text_average_pooler_split_bert(row, max_size=512)
                 poolers_list.append(pd.Series(pooler))
             self.poolers_df = pd.DataFrame(poolers_list)
             # print('finished BERT encoding', datetime.datetime.now())
@@ -134,13 +154,13 @@ def main():
 
     # define paths
     base_directory = os.path.abspath(os.curdir)
-    data_directory = os.path.join(base_directory, 'features_to_use')
+    data_directory = os.path.join(base_directory, 'data', 'filter_submissions')
     clusters_directory = os.path.join(base_directory, 'data', 'clusters')
     if not os.path.exists(clusters_directory):
         os.makedirs(clusters_directory)
 
     # load data
-    data_file_path = os.path.join(data_directory, 'all_train_data.csv')
+    data_file_path = os.path.join(data_directory, 'comments_label_branch_info_after_remove_no_length_0.csv')
     # comments_label_branch_info_after_remove_no_length_0
     all_train_data = pd.read_csv(data_file_path)
     print("raw data shape: ", all_train_data.shape)
@@ -386,6 +406,8 @@ def main():
 
 
 if __name__ == '__main__':
-    # split_data_into_clusters('tsne_with_pca_y_gmm')
-    main()
+    split_data_into_clusters('tsne_with_pca_y_gmm')
+    split_data_into_clusters('umap_y_hdbscan')
+
+    # main()
 
