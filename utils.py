@@ -18,3 +18,24 @@ def create_dataset_dict(dataset: str, all_data_dict: dict) -> dict:
         'branches_lengths_list': all_data_dict[dataset][f'branches_lengths_list'],
         'len_df': all_data_dict[dataset]['len_df']
     }
+
+
+def get_model_layer_sizes(data_dict: dict) -> dict:
+    """
+    The function get dict with the data and return the sizes for the model's layers
+    :param data_dict:
+    :return:
+    """
+
+    return {
+        'lstm_text': data_dict['branch_comments_embedded_text_df'].iloc[0, 0],
+        'lstm_comments': data_dict['branch_comments_features_df'].iloc[0, 0],
+        'lstm_users': data_dict['branch_comments_user_profiles_df'].iloc[0, 0],
+        'input_size_text_sub': data_dict['branch_comments_embedded_text_df'].iloc[0, 0],
+        'input_size_sub_features':
+            len(data_dict['submission_data_dict'][list(data_dict['submission_data_dict'].keys())[0]][1]) +
+            len(data_dict['branch_submission_dict'][list(data_dict['branch_submission_dict'].keys())[0]][1]),
+        'input_size_sub_profile_features':
+            len(data_dict['submission_data_dict'][list(data_dict['submission_data_dict'].keys())[0]][2])
+
+    }

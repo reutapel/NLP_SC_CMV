@@ -484,14 +484,13 @@ def main(is_cuda, cluster_dir=None):
         all_data_dict = import_split_data_obj.sort_joined_data()
 
         # load train data
-        if 'train' in all_data_dict.keys():
-            print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create train data')
-            train_data = utils.create_dataset_dict('train', all_data_dict)
+        print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create train data')
+        train_data = utils.create_dataset_dict('train', all_data_dict)
+        layers_input_size = utils.get_model_layer_sizes(train_data)
 
         # load test data
-        if 'testi' in all_data_dict.keys():
-            print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create test data')
-            test_data = utils.create_dataset_dict('test', all_data_dict)
+        print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create test data')
+        test_data = utils.create_dataset_dict('test', all_data_dict)
 
 
         # load valid data
@@ -514,12 +513,11 @@ def main(is_cuda, cluster_dir=None):
     # define LSTM layers hyperparameters
     # TODO: define sizes according to concat dataset flag
     print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} define LSTM layers hyperparameters')
-    init_lstm_text = InitLstm(input_size=len(train_data['branch_comments_embedded_text_df'].iloc[0, 0]), hidden_size=20,
-                              num_layers=2, batch_first=True)
-    init_lstm_comments = InitLstm(input_size=len(branch_comments_features_df_train.iloc[0, 0]), hidden_size=10,
-                                  num_layers=2, batch_first=True)
-    init_lstm_users = InitLstm(input_size=len(branch_comments_user_profiles_df_train.iloc[0, 0]), hidden_size=10,
-                               num_layers=2, batch_first=True)
+    init_lstm_text = InitLstm(input_size=layers_input_size['lstm_text'], hidden_size=20, num_layers=2, batch_first=True)
+    init_lstm_comments = InitLstm(input_size=layers_input_size['lstm_comments'], hidden_size=10, num_layers=2,
+                                  batch_first=True)
+    init_lstm_users = InitLstm(input_size=layers_input_size['init_lstm_users'], hidden_size=10, num_layers=2,
+                               batch_first=True)
 
     # define conv layers hyperparameters
     print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} define conv layers hyperparameters')
@@ -530,11 +528,9 @@ def main(is_cuda, cluster_dir=None):
     init_conv_sub_profile_features = InitConv1d(in_channels=1, out_channels=9, kernel_size=3, stride=1, padding=0,
                                                 leaky_relu_alpha=0.2)
 
-    input_size_text_sub = len(branch_comments_embedded_text_df_train.iloc[0, 0])
-    input_size_sub_features = len(submission_data_dict_train[list(submission_data_dict_train.keys())[0]][1]) + \
-                              len(branch_submission_dict_train[list(branch_submission_dict_train.keys())[0]][1])
-                                # submission features + branch features
-    input_size_sub_profile_features = len(submission_data_dict_train[list(submission_data_dict_train.keys())[0]][2])
+    input_size_text_sub = layers_input_size['input_size_text_sub']
+    input_size_sub_features = layers_input_size['input_size_sub_features']
+    input_size_sub_profile_features = layers_input_size['input_size_sub_profile_features']
 
     base_directory = os.getenv('PWD')
     print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create outputs directory')
