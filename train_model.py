@@ -423,11 +423,24 @@ def main(is_cuda):
     concat_datasets = True
 
     if concat_datasets:
+        # create pytorch dataset for each data folder and use torchnet.dataset.ConcatDataset to load data on the fly
+        folders_data_dict = defaultdict(dict)
+        # collect names of data folders
         import_split_data_obj = ImportSplitData()
+        # iterate all datasets
         for dataset, folder_list in import_split_data_obj.data_folders_dict.items():
+            # iterate all folders of dataset
             for folder in folder_list:
+                print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} load from {folder}')
+                # get folder path
+                path = os.path.join(os.getcwd(), 'features_to_use', folder)
+                # get dict of data objects per folder
+                folders_data_dict[dataset][folder] = load_data(path)
+        train_data = folders_data_dict['train']
+        test_data = folders_data_dict['testi']
 
     else:
+        # join all data folders for each dataset approach
         import_split_data_obj = ImportSplitData()
         import_split_data_obj.load_join_data()
         all_data_dict = import_split_data_obj.sort_joined_data()
