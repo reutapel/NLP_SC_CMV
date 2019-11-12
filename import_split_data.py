@@ -92,3 +92,36 @@ class ImportSplitData:
                     self.all_data_dict[dataset][var] = len_df[0].tolist()
 
         return self.all_data_dict
+
+
+def load_data(folder_path: str) -> list:
+    """
+    Load data from a specific folder
+    :param folder_path: str: the folder's path to load from
+    :return: dict: {file_name: file} with all the data in the folder
+    """
+    # iterate over all files in each dataset folder
+    data_dict = dict()
+    data_list = list()
+    for filename in os.listdir(folder_path):
+        print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} load {filename} from {folder_path}')
+        if filename == '.DS_Store':
+            continue
+        # connect all part of files of the same dataset
+        file_path = os.path.join(folder_path, filename)
+        file = joblib.load(file_path)
+        data_dict[filename.split('.', 1)[0]] = file
+
+    if 'train' in folder_path:
+        dataset_suffix = 'train'
+    elif 'testi' in folder_path:
+        dataset_suffix = 'testi'
+    else:
+        dataset_suffix = 'valid'
+    len_df = pd.DataFrame(data=data_dict[f'branches_lengths_list_{dataset_suffix}'],
+                          index=data_dict[f'branch_comments_embedded_text_df_{dataset_suffix}'].index)
+    data_dict['len_df'] = len_df
+
+
+
+    return data_list

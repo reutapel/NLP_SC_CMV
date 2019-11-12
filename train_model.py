@@ -21,7 +21,7 @@ from datetime import datetime
 import numpy as np
 import math
 from collections import defaultdict
-from early_stopping_pytorch import pytorchtools
+from early_stopping_pytorch.pytorchtools import EarlyStopping
 
 # old_stdout = sys.stdout
 # log_file = open("train_model.log", "w")
@@ -149,7 +149,7 @@ class TrainModel:
 
         return dt.DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True)
 
-    def train(self, mu=None):
+    def train(self, mu=None, patience=10):
         """
         train the model on train data by batches iterate all epochs
         :param: float mu: mu for creating weight in loss
@@ -163,6 +163,9 @@ class TrainModel:
             print('run cuda')
 
         self.model.train()
+
+        # initialize the early_stopping object
+        early_stopping = EarlyStopping(patience=patience, verbose=True)
 
         # device = tr.device("cuda" if tr.cuda.is_available() else "cpu")
 
@@ -248,6 +251,15 @@ class TrainModel:
             # calculate measurements on train data
             self.calc_measurements(correct, total, train_labels, train_predictions, train_probabilities, epoch,  "train")
             self.test(epoch)
+
+            # early_stopping needs the validation loss to check if it has decresed,
+            # and if it has, it will make a checkpoint of the current model
+            early_stopping(self.test_loss_list[epoch], self.model)
+
+            if early_stopping.early_stop:
+                print("Early stopping")
+                break
+
             self.model.train()
 
         # save the model
@@ -369,6 +381,11 @@ class TrainModel:
         fig, ax = plt.subplots()
         ax.plot(list(range(epoch_count)), train_loss, 'g--', label='train')
         ax.plot(list(range(epoch_count)), test_loss, 'b-', label='test')
+
+        # find position of lowest validation loss
+        minposs = test_loss.index(min(test_loss)) + 1
+        plt.axvline(minposs, linestyle='--', color='r', label='Early Stopping Checkpoint')
+
         ax.legend()
         plt.title(measurement + ' per epoch')
         plt.legend(['Train', 'Test'])
