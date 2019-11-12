@@ -5,7 +5,7 @@ from torch.utils import data as dt
 from DeltaModel import DeltaModel
 from model_utils import InitLstm
 from model_utils import InitConv1d
-from import_split_data import ImportSplitData
+from import_split_data import ImportSplitData, load_data
 import pandas as pd
 from tqdm import tqdm
 from time import gmtime, strftime
