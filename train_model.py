@@ -23,6 +23,7 @@ import math
 from collections import defaultdict
 from early_stopping_pytorch.pytorchtools import EarlyStopping
 import utils
+import torchnet
 
 # old_stdout = sys.stdout
 # log_file = open("train_model.log", "w")
@@ -69,7 +70,8 @@ class TrainModel:
     def __init__(self, train_data, test_data, learning_rate, criterion, batch_size, num_epochs, num_labels, fc1, fc2,
                  init_lstm_text, init_lstm_comments, init_lstm_users, init_conv_text, init_conv_sub_features,
                  init_conv_sub_profile_features, input_size_text_sub, input_size_sub_features,
-                 input_size_sub_profile_features, fc1_droput, fc2_dropout, is_cuda, curr_model_outputs_dir):
+                 input_size_sub_profile_features, fc1_droput, fc2_dropout, is_cuda, curr_model_outputs_dir,
+                 concat_datasets=False):
         """
 
         :param train_data: all data elements of train
@@ -114,8 +116,25 @@ class TrainModel:
         self.optimizer = tr.optim.Adam(self.model.parameters(), lr=learning_rate)
 
         # create datasets
-        self.train_dataset = self.create_dataset(train_data)
-        self.test_dataset = self.create_dataset(test_data)
+        if concat_datasets:
+            train_datasets_list = list()
+            test_datasets_list = list()
+            # create customdataset per folder for train
+            for folder, data_dict in train_data.items():
+                folder_train_dataset = self.create_dataset(data_dict)
+                train_datasets_list.append(folder_train_dataset)
+            # concatenate datasets for on the fly loading of data
+            self.train_dataset = torchnet.dataset.ConcatDataset(train_datasets_list)
+            # create customdataset per folder for test
+            for folder, data_dict in train_data.items():
+                folder_test_dataset = self.create_dataset(data_dict)
+                test_datasets_list.append(folder_test_dataset)
+            # concatenate datasets for on the fly loading of data
+            self.test_dataset = torchnet.dataset.ConcatDataset(test_datasets_list)
+
+        else:
+            self.train_dataset = self.create_dataset(train_data)
+            self.test_dataset = self.create_dataset(test_data)
 
         # create data loaders
         self.train_loader = self.create_data_loader(self.train_dataset, self.batch_size)
@@ -442,11 +461,24 @@ def main(is_cuda, cluster_dir=None):
     concat_datasets = True
 
     if concat_datasets:
+        # create pytorch dataset for each data folder and use torchnet.dataset.ConcatDataset to load data on the fly
+        folders_data_dict = defaultdict(dict)
+        # collect names of data folders
         import_split_data_obj = ImportSplitData()
+        # iterate all datasets
         for dataset, folder_list in import_split_data_obj.data_folders_dict.items():
+            # iterate all folders of dataset
             for folder in folder_list:
+                print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} load from {folder}')
+                # get folder path
+                path = os.path.join(os.getcwd(), 'features_to_use', folder)
+                # get dict of data objects per folder
+                folders_data_dict[dataset][folder] = load_data(path)
+        train_data = folders_data_dict['train']
+        test_data = folders_data_dict['testi']
 
     else:
+        # join all data folders for each dataset approach
         import_split_data_obj = ImportSplitData()
         import_split_data_obj.load_join_data()
         all_data_dict = import_split_data_obj.sort_joined_data()
@@ -514,7 +546,7 @@ def main(is_cuda, cluster_dir=None):
                              fc2, init_lstm_text, init_lstm_comments, init_lstm_users, init_conv_text,
                              init_conv_sub_features, init_conv_sub_profile_features, input_size_text_sub,
                              input_size_sub_features, input_size_sub_profile_features, fc1_dropout, fc2_dropout,
-                             is_cuda, curr_model_outputs_dir)
+                             is_cuda, curr_model_outputs_dir, concat_datasets=concat_datasets)
 
     # train and test model
     print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} train and test model')
