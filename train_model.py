@@ -476,6 +476,7 @@ def main(is_cuda, cluster_dir=None):
                 folders_data_dict[dataset][folder] = load_data(path)
         train_data = folders_data_dict['train']
         test_data = folders_data_dict['testi']
+        layers_input_size = utils.get_model_layer_sizes(train_data[next(iter(train_data))])
 
     else:
         # join all data folders for each dataset approach
@@ -491,7 +492,6 @@ def main(is_cuda, cluster_dir=None):
         # load test data
         print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create test data')
         test_data = utils.create_dataset_dict('test', all_data_dict)
-
 
         # load valid data
         if 'valid' in all_data_dict.keys():
