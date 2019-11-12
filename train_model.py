@@ -21,6 +21,7 @@ from datetime import datetime
 import numpy as np
 import math
 from collections import defaultdict
+from early_stopping_pytorch import pytorchtools
 
 # old_stdout = sys.stdout
 # log_file = open("train_model.log", "w")
@@ -418,12 +419,12 @@ def replace_0_with_list(df, len_list_in_cell):
     return df
 
 
-def main(is_cuda):
+def main(is_cuda, cluster_dir=None):
 
     debug = False
 
     if not debug:
-        import_split_data_obj = ImportSplitData()
+        import_split_data_obj = ImportSplitData(cluster_dir)
         all_data_dict = import_split_data_obj.sort_joined_data()
 
         # load train data
@@ -588,9 +589,17 @@ def main(is_cuda):
 
 
 if __name__ == '__main__':
+    """
+    sys.argv[1] = main_is_cuda
+    sys.argv[2] = cluster directory name
+    """
     main_is_cuda = sys.argv[1]
+    if len(sys.argv) > 2:
+        cluster_directory = sys.argv[2]
+    else:
+        cluster_directory = None
     print(f'running with cuda: {main_is_cuda}')
     if main_is_cuda == 'False':
         main_is_cuda = False
-    main(main_is_cuda)
+    main(main_is_cuda, cluster_directory)
     print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} Done!')

@@ -1562,7 +1562,7 @@ if __name__ == '__main__':
 
     if len(sys.argv) > 6:  # run on clusters
         train_test_data_directory = os.path.join(train_test_data_directory, sys.argv[6])
-        features_directory = os.path.join(features_directory, sys.argv[6])
+        features_directory = os.path.join(base_directory, 'clusters_features', sys.argv[6])
         if not os.path.exists(features_directory):
             os.makedirs(features_directory)
         run_clusters = True

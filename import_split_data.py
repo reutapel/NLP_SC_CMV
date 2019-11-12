@@ -8,9 +8,12 @@ from time import gmtime, strftime
 class ImportSplitData:
     """"This class implements the import, join and sort of all the data parts for each dataset """
 
-    def __init__(self):
+    def __init__(self, cluster_dir=None):
 
-        self.folder_list = os.listdir(os.path.join(os.getcwd(), 'features_to_use'))
+        if cluster_dir is None:
+            self.folder_list = os.listdir(os.path.join(os.getcwd(), 'features_to_use'))
+        else:
+            self.folder_list = os.listdir(os.path.join(os.getcwd(), 'clusters_features', cluster_dir))
         print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} self.folder_list {self.folder_list}')
 
         self.data_folders_dict = defaultdict(list)
