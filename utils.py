@@ -28,10 +28,10 @@ def get_model_layer_sizes(data_dict: dict) -> dict:
     """
 
     return {
-        'lstm_text': data_dict['branch_comments_embedded_text_df'].iloc[0, 0],
-        'lstm_comments': data_dict['branch_comments_features_df'].iloc[0, 0],
-        'lstm_users': data_dict['branch_comments_user_profiles_df'].iloc[0, 0],
-        'input_size_text_sub': data_dict['branch_comments_embedded_text_df'].iloc[0, 0],
+        'lstm_text': len(data_dict['branch_comments_embedded_text_df'].iloc[0, 0]),
+        'lstm_comments': len(data_dict['branch_comments_features_df'].iloc[0, 0]),
+        'lstm_users': len(data_dict['branch_comments_user_profiles_df'].iloc[0, 0]),
+        'input_size_text_sub': len(data_dict['branch_comments_embedded_text_df'].iloc[0, 0]),
         'input_size_sub_features':
             len(data_dict['submission_data_dict'][list(data_dict['submission_data_dict'].keys())[0]][1]) +
             len(data_dict['branch_submission_dict'][list(data_dict['branch_submission_dict'].keys())[0]][1]),

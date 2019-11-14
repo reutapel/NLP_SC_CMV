@@ -96,7 +96,7 @@ def load_data(folder_path: str) -> dict:
     # iterate over all files in each dataset folder
     data_dict = dict()
     for filename in os.listdir(folder_path):
-        print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} load {filename} from {folder_path}')
+        print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} load {filename}')
         if filename == '.DS_Store':
             continue
         # connect all part of files of the same dataset

@@ -150,14 +150,14 @@ class TrainModel:
         # calculate number of trainable parameters
         print(sum(p.numel() for p in self.model.parameters() if p.requires_grad), " trainable parameters in model")
 
-    def create_dataset(self, data):
+    def create_dataset(self, data: dict):
         """
 
         :param data: all the data structures needed for the class
         :return: CustomDataset object
         """
 
-        return CustomDataset(*data)
+        return CustomDataset(data)
 
     def create_data_loader(self, dataset, batch_size):
         """
@@ -516,7 +516,7 @@ def main(is_cuda, cluster_dir=None):
     init_lstm_text = InitLstm(input_size=layers_input_size['lstm_text'], hidden_size=20, num_layers=2, batch_first=True)
     init_lstm_comments = InitLstm(input_size=layers_input_size['lstm_comments'], hidden_size=10, num_layers=2,
                                   batch_first=True)
-    init_lstm_users = InitLstm(input_size=layers_input_size['init_lstm_users'], hidden_size=10, num_layers=2,
+    init_lstm_users = InitLstm(input_size=layers_input_size['lstm_users'], hidden_size=10, num_layers=2,
                                batch_first=True)
 
     # define conv layers hyperparameters
