@@ -1,11 +1,9 @@
 import torch as tr
 import torch.nn as nn
-from model_utils import CustomDataset
-from torch.utils import data as dt
 from DeltaModel import DeltaModel
 from model_utils import InitLstm
 from model_utils import InitConv1d
-from import_split_data import ImportSplitData, load_data
+from import_split_data import ImportSplitData
 import pandas as pd
 from tqdm import tqdm
 from time import gmtime, strftime
@@ -15,14 +13,12 @@ import matplotlib.pyplot as plt
 from pylab import savefig
 from matplotlib.ticker import MaxNLocator
 import os
-import numbers
 import sys
 from datetime import datetime
 import numpy as np
-import math
 from collections import defaultdict
 from early_stopping_pytorch.pytorchtools import EarlyStopping
-import utils
+from utils import create_class_weight, create_dataset_data_loader, create_dataset, create_data_loader
 import torchnet
 
 # old_stdout = sys.stdout
@@ -33,49 +29,19 @@ import torchnet
 # TODO: F.mse_loss(size_average, reduce) : parameters that affect if we get average values per batch : sum or average
 
 
-def create_class_weight(labels: tr.Tensor, mu=None):
-    """
-    This function create weight tensor for loss function
-    :param labels: tensor with the labels of the batch
-    :param mu: parameter to tune
-    :return:
-    """
-
-    if mu is None:
-        mu = 1.0
-
-    sizes = {'delta': labels.sum().item(),
-             'no_delta': (labels == 0).sum().item()}
-    total = sum(sizes.values())
-    weights = dict()
-
-    for label, count_labels in sizes.items():
-        if count_labels > 0:
-            w = total / float(count_labels)
-        else:
-            w = total
-        score = math.log2(mu*w)
-        weights[label] = max(score, 1.0)
-
-    weight = tr.where(labels == 0, (labels == 0).float() * weights['delta'],
-                      (labels == 1).float() * weights['no_delta'])
-
-    return weight
-
-
 class TrainModel:
     """
     class builds the data sets, data loaders, model, trains and tests the model.
     """
-    def __init__(self, train_data, test_data, learning_rate, criterion, batch_size, num_epochs, num_labels, fc1, fc2,
+    def __init__(self, import_split_data_obj, learning_rate, criterion, batch_size, num_epochs,
+                 num_labels, fc1, fc2,
                  init_lstm_text, init_lstm_comments, init_lstm_users, init_conv_text, init_conv_sub_features,
                  init_conv_sub_profile_features, input_size_text_sub, input_size_sub_features,
                  input_size_sub_profile_features, fc1_droput, fc2_dropout, is_cuda, curr_model_outputs_dir,
                  concat_datasets=False):
         """
-
-        :param train_data: all data elements of train
-        :param test_data: all data elements of test
+        :param import_split_data_obj: ImportSplitData object - holds info of data directory structure,
+        and train/test if pre loaded
         :param learning_rate: learning rate pace
         :param criterion: which criterion to calculate loss by
         :param batch_size: size of batch
@@ -97,7 +63,7 @@ class TrainModel:
         :param bool is_cuda: if running with cuda or not
         :param curr_model_outputs_dir: the directory to save the model's output
         """
-
+        self.import_split_data_obj = import_split_data_obj
         self.learning_rate = learning_rate
         self.num_epochs = num_epochs
         self.batch_size = batch_size
@@ -120,25 +86,26 @@ class TrainModel:
             train_datasets_list = list()
             test_datasets_list = list()
             # create customdataset per folder for train
-            for folder, data_dict in train_data.items():
-                folder_train_dataset = self.create_dataset(data_dict)
+            for folder, data_dict in import_split_data_obj.train_data.items():
+                folder_train_dataset = create_dataset(data_dict)
                 train_datasets_list.append(folder_train_dataset)
             # concatenate datasets for on the fly loading of data
             self.train_dataset = torchnet.dataset.ConcatDataset(train_datasets_list)
             # create customdataset per folder for test
-            for folder, data_dict in train_data.items():
-                folder_test_dataset = self.create_dataset(data_dict)
+            for folder, data_dict in import_split_data_obj.test_data.items():
+                folder_test_dataset = create_dataset(data_dict)
                 test_datasets_list.append(folder_test_dataset)
             # concatenate datasets for on the fly loading of data
             self.test_dataset = torchnet.dataset.ConcatDataset(test_datasets_list)
 
         else:
-            self.train_dataset = self.create_dataset(train_data)
-            self.test_dataset = self.create_dataset(test_data)
+            self.train_dataset = create_dataset(import_split_data_obj.train_data)
+            self.test_dataset = create_dataset(import_split_data_obj.test_data)
 
         # create data loaders
-        self.train_loader = self.create_data_loader(self.train_dataset, self.batch_size)
-        self.test_loader = self.create_data_loader(self.test_dataset, self.batch_size)
+        self.train_loader = create_data_loader(self.train_dataset, self.batch_size)
+        self.test_loader = create_data_loader(self.test_dataset, self.batch_size)
+
         self.train_loss_list = list()
         self.test_loss_list = list()
         self.mu_train_loss_dict = defaultdict(list)
@@ -149,25 +116,6 @@ class TrainModel:
 
         # calculate number of trainable parameters
         print(sum(p.numel() for p in self.model.parameters() if p.requires_grad), " trainable parameters in model")
-
-    def create_dataset(self, data):
-        """
-
-        :param data: all the data structures needed for the class
-        :return: CustomDataset object
-        """
-
-        return CustomDataset(*data)
-
-    def create_data_loader(self, dataset, batch_size):
-        """
-
-        :param dataset: dataset train or test for data loader to run over
-        :param batch_size: size of batch
-        :return: data loader object
-        """
-
-        return dt.DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True)
 
     def train(self, mu=None, patience=10):
         """
@@ -204,70 +152,78 @@ class TrainModel:
                 train_predictions = train_predictions.cuda()
                 train_probabilities = train_probabilities.cuda()
 
-            first_batch = True
-            for i, (data_points, labels) in tqdm(enumerate(self.train_loader), desc='batch'):
+            first_folder = True
+            # loop on train folders, create dataset / data loader for each folder and train every epoch on all the
+            # folders sequentially
+            # create dataset and data loader
+            print('training by folders')
+            for folder in self.import_split_data_obj.data_folders_dict['train'].items():
 
-                # forward
-                outputs, sorted_idx, batch_size = self.model(data_points)
-                # TODO: understand impact of packed padded to loss, like function loss in model.py
-                # turn to probability of class 1
-                probabilities = self.sigmoid(outputs)
-                outputs = outputs.view(batch_size, -1).float()
+                self.train_dataset, self.train_loader = create_dataset_data_loader(folder, self.batch_size)
 
-                # sort labels
-                labels = labels[sorted_idx].view(batch_size, -1).float()
-                if self.is_cuda:
-                    labels = labels.cuda()
-                    probabilities = probabilities.cuda()
-                    outputs = outputs.cuda()
+                for i, (data_points, labels) in tqdm(enumerate(self.train_loader), desc='batch'):
 
-                # calculate for measurements
-                predicted = ((probabilities > 0.5) * 1).float()
-                total += labels.size(0)
-                correct += (predicted == labels).sum()
-                train_labels = tr.cat((train_labels, labels))
-                train_predictions = tr.cat((train_predictions, predicted))
-                train_probabilities = tr.cat((train_probabilities, probabilities))
+                    # forward
+                    outputs, sorted_idx, batch_size = self.model(data_points)
+                    # TODO: understand impact of packed padded to loss, like function loss in model.py
+                    # turn to probability of class 1
+                    probabilities = self.sigmoid(outputs)
+                    outputs = outputs.view(batch_size, -1).float()
 
-                # calculate loss
-                # print("calc loss")
-                weights = create_class_weight(labels, mu)
-                criterion = nn.BCEWithLogitsLoss(weight=weights)
-                loss = criterion(outputs, labels)
+                    # sort labels
+                    labels = labels[sorted_idx].view(batch_size, -1).float()
+                    if self.is_cuda:
+                        labels = labels.cuda()
+                        probabilities = probabilities.cuda()
+                        outputs = outputs.cuda()
 
-                # loss = self.criterion(outputs, labels)
-                # if bool(criterion(outputs, labels) != self.criterion(outputs, labels)):
-                #     print(f'not the same loss with and without pos_weight for epoch {epoch} and step {i}')
-                # loss = self.criterion(outputs, labels)
-                # if want graph per epoch
-                if first_batch:
-                    first_batch = False
-                    self.train_loss_list.append(loss.item())
-                else:
-                    self.train_loss_list[epoch] += loss.item()
+                    # calculate for measurements
+                    predicted = ((probabilities > 0.5) * 1).float()
+                    total += labels.size(0)
+                    correct += (predicted == labels).sum()
+                    train_labels = tr.cat((train_labels, labels))
+                    train_predictions = tr.cat((train_predictions, predicted))
+                    train_probabilities = tr.cat((train_probabilities, probabilities))
 
-                # initialize gradient so only current batch will be summed and then backward
-                self.optimizer.zero_grad()
+                    # calculate loss
+                    # print("calc loss")
+                    weights = create_class_weight(labels, mu)
+                    criterion = nn.BCEWithLogitsLoss(weight=weights)
+                    loss = criterion(outputs, labels)
 
-                # calculate gradients
-                loss.backward()
+                    # loss = self.criterion(outputs, labels)
+                    # if bool(criterion(outputs, labels) != self.criterion(outputs, labels)):
+                    #     print(f'not the same loss with and without pos_weight for epoch {epoch} and step {i}')
+                    # loss = self.criterion(outputs, labels)
+                    # we want loss graph per epoch so we sum loss of all batches per epoch
+                    if first_folder:
+                        first_folder = False
+                        self.train_loss_list.append(loss.item())
+                    else:
+                        self.train_loss_list[epoch] += loss.item()
 
-                # # debug gradients - self.model.parameters() contains every parameters that is defined in init
-                # # and needs to have gradients, if something is defined in init and not used it's gradients will be 0
-                # check gradients that are closed to input.. last in backwards
-                # for p in self.model.parameters():
-                #     print("gradient of p")
-                #     print(p.grad.norm)
+                    # initialize gradient so only current batch will be summed and then backward
+                    self.optimizer.zero_grad()
 
-                # update parameters : tensor - learning_rate*gradient
-                self.optimizer.step()
+                    # calculate gradients
+                    loss.backward()
 
-                if (i+1) % 100 == 0:
-                    print('Epoch: [%d%d], Step: [%d%d], Loss: %.4f' % (epoch+1, self.num_epochs, i+1,
-                                                                       len(self.train_dataset)//self.batch_size,
-                                                                       loss))
+                    # # debug gradients - self.model.parameters() contains every parameters that is defined in init
+                    # # and needs to have gradients, if something is defined in init and not used it's gradients will be 0
+                    # check gradients that are closed to input.. last in backwards
+                    # for p in self.model.parameters():
+                    #     print("gradient of p")
+                    #     print(p.grad.norm)
+
+                    # update parameters : tensor - learning_rate*gradient
+                    self.optimizer.step()
+
+                    if (i+1) % 100 == 0:
+                        print('Epoch: [%d%d], Step: [%d%d], Loss: %.4f' % (epoch+1, self.num_epochs, i+1,
+                                                                           len(self.train_dataset)//self.batch_size,
+                                                                           loss))
             # average batch losses per epoch
-            self.train_loss_list[epoch] = self.train_loss_list[epoch]/(i+1)
+            self.train_loss_list[epoch] = self.train_loss_list[epoch]/(i+1)  # TODO - CHANGE i BEACUSE FOLDERS
             # calculate measurements on train data
             self.calc_measurements(correct, total, train_labels, train_predictions, train_probabilities, epoch,  "train")
             self.test(epoch)
@@ -310,48 +266,56 @@ class TrainModel:
 
         # make sure no gradients - memory efficiency - no allocation of tensors to the gradients
         with(tr.no_grad()):
+            first_folder = True
+            # loop on test folders, create dataset / data loader for each folder and test every epoch on all the
+            # folders sequentially
+            # create dataset and data loader
+            print('testing by folders')
+            for folder in self.import_split_data_obj.data_folders_dict['testi'].items():
 
-            for i, (data_points, labels) in tqdm(enumerate(self.test_loader), desc='batch'):
+                self.test_dataset, self.test_loader = create_dataset_data_loader(folder, self.batch_size)
 
-                outputs, sorted_idx, batch_size = self.model(data_points)
+                for i, (data_points, labels) in tqdm(enumerate(self.test_loader), desc='batch'):
 
-                # turn to probability of class 1
-                probabilities = self.sigmoid(outputs)
-                outputs = outputs.view(batch_size, -1).float()
+                    outputs, sorted_idx, batch_size = self.model(data_points)
 
-                labels = labels[sorted_idx].view(batch_size, -1).float()
+                    # turn to probability of class 1
+                    probabilities = self.sigmoid(outputs)
+                    outputs = outputs.view(batch_size, -1).float()
 
-                if self.is_cuda:
-                    outputs = outputs.cuda()
-                    labels = labels.cuda()
-                    probabilities = probabilities.cuda()
+                    labels = labels[sorted_idx].view(batch_size, -1).float()
 
-                # calculate loss
-                # pos_weight_delta = ((labels.long() == 0).sum() / labels.long().sum()).item()
-                # pos_weight_no_delta = (labels.long().sum() / (labels.long() == 0).sum()).item()
-                #
-                # pos_weight = tr.where(labels == 0, (labels == 0).float()*pos_weight_no_delta,
-                #                       (labels == 1).float()*pos_weight_delta)
-                # criterion = nn.BCEWithLogitsLoss(weight=pos_weight)
-                weights = create_class_weight(labels)
-                criterion = nn.BCEWithLogitsLoss(weight=weights)
-                loss = criterion(outputs, labels)
-                # loss = self.criterion(outputs, labels)
-                # if want graph per epoch
-                if first_batch:
-                    first_batch = False
-                    self.test_loss_list.append(loss.item())
-                else:
-                    self.test_loss_list[epoch] += loss.item()
+                    if self.is_cuda:
+                        outputs = outputs.cuda()
+                        labels = labels.cuda()
+                        probabilities = probabilities.cuda()
 
-                predicted = (probabilities > 0.5).float() * 1
-                total += labels.size(0)
-                correct += (predicted == labels).sum()
-                test_labels = tr.cat((test_labels, labels))
-                test_predictions = tr.cat((test_predictions, predicted))
-                test_probabilities = tr.cat((test_probabilities, probabilities))
+                    # calculate loss
+                    # pos_weight_delta = ((labels.long() == 0).sum() / labels.long().sum()).item()
+                    # pos_weight_no_delta = (labels.long().sum() / (labels.long() == 0).sum()).item()
+                    #
+                    # pos_weight = tr.where(labels == 0, (labels == 0).float()*pos_weight_no_delta,
+                    #                       (labels == 1).float()*pos_weight_delta)
+                    # criterion = nn.BCEWithLogitsLoss(weight=pos_weight)
+                    weights = create_class_weight(labels)
+                    criterion = nn.BCEWithLogitsLoss(weight=weights)
+                    loss = criterion(outputs, labels)
+                    # loss = self.criterion(outputs, labels)
+                    # if want graph per epoch
+                    if first_folder:
+                        first_folder = False
+                        self.test_loss_list.append(loss.item())
+                    else:
+                        self.test_loss_list[epoch] += loss.item()
 
-        self.test_loss_list[epoch] = self.test_loss_list[epoch] / (i + 1)
+                    predicted = (probabilities > 0.5).float() * 1
+                    total += labels.size(0)
+                    correct += (predicted == labels).sum()
+                    test_labels = tr.cat((test_labels, labels))
+                    test_predictions = tr.cat((test_predictions, predicted))
+                    test_probabilities = tr.cat((test_probabilities, probabilities))
+
+        self.test_loss_list[epoch] = self.test_loss_list[epoch] / (i + 1)  # TODO - CHANGE i BEACUSE FOLDERS
 
         # calculate measurements on test data
         self.calc_measurements(correct, total, test_labels, test_predictions, test_probabilities, epoch, "test")
@@ -448,55 +412,20 @@ class TrainModel:
         return
 
 
-def replace_0_with_list(df, len_list_in_cell):
-    for i, row in enumerate(df.values):
-        for j, col in enumerate(row):
-            if isinstance(col, numbers.Number):
-                df.loc[i, j] = [0] * len_list_in_cell
-    return df
-
-
 def main(is_cuda, cluster_dir=None):
 
     concat_datasets = True
+    import_data_strategy_dict = {0: 'import_all', 1: 'concat_datasets', 2: 'import_when_training'}
+    chosen_import_strategy = import_data_strategy_dict[2]
+    print('chosen import strategy is: ', chosen_import_strategy)
 
-    if concat_datasets:
-        # create pytorch dataset for each data folder and use torchnet.dataset.ConcatDataset to load data on the fly
-        folders_data_dict = defaultdict(dict)
-        # collect names of data folders
-        import_split_data_obj = ImportSplitData()
-        # iterate all datasets
-        for dataset, folder_list in import_split_data_obj.data_folders_dict.items():
-            # iterate all folders of dataset
-            for folder in folder_list:
-                print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} load from {folder}')
-                # get folder path
-                path = os.path.join(os.getcwd(), 'features_to_use', folder)
-                # get dict of data objects per folder
-                folders_data_dict[dataset][folder] = load_data(path)
-        train_data = folders_data_dict['train']
-        test_data = folders_data_dict['testi']
-        layers_input_size = utils.get_model_layer_sizes(train_data[next(iter(train_data))])
+    # create import obj and collect names of data folders
+    import_split_data_obj = ImportSplitData()
+    if chosen_import_strategy == 'concat_datasets':
+        import_split_data_obj.concat_datasets_strategy()
 
-    else:
-        # join all data folders for each dataset approach
-        import_split_data_obj = ImportSplitData()
-        import_split_data_obj.load_join_data()
-        all_data_dict = import_split_data_obj.sort_joined_data()
-
-        # load train data
-        print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create train data')
-        train_data = utils.create_dataset_dict('train', all_data_dict)
-        layers_input_size = utils.get_model_layer_sizes(train_data)
-
-        # load test data
-        print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create test data')
-        test_data = utils.create_dataset_dict('test', all_data_dict)
-
-        # load valid data
-        if 'valid' in all_data_dict.keys():
-            print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create validation data')
-            validation_data = utils.create_dataset_dict('valid', all_data_dict)
+    elif chosen_import_strategy == 'import_all':
+        import_split_data_obj.import_all_strategy()
 
     # define hyper parameters of learning phase
     # log makes differences expand to higher numbers because of it's behaivor between 0 to 1
@@ -516,7 +445,7 @@ def main(is_cuda, cluster_dir=None):
     init_lstm_text = InitLstm(input_size=layers_input_size['lstm_text'], hidden_size=20, num_layers=2, batch_first=True)
     init_lstm_comments = InitLstm(input_size=layers_input_size['lstm_comments'], hidden_size=10, num_layers=2,
                                   batch_first=True)
-    init_lstm_users = InitLstm(input_size=layers_input_size['init_lstm_users'], hidden_size=10, num_layers=2,
+    init_lstm_users = InitLstm(input_size=layers_input_size['lstm_users'], hidden_size=10, num_layers=2,
                                batch_first=True)
 
     # define conv layers hyperparameters
@@ -542,7 +471,7 @@ def main(is_cuda, cluster_dir=None):
 
     # create training instance
     print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create training instance')
-    train_model = TrainModel(train_data, test_data, learning_rate, criterion, batch_size, num_epochs, num_labels, fc1,
+    train_model = TrainModel(import_split_data_obj, learning_rate, criterion, batch_size, num_epochs, num_labels, fc1,
                              fc2, init_lstm_text, init_lstm_comments, init_lstm_users, init_conv_text,
                              init_conv_sub_features, init_conv_sub_profile_features, input_size_text_sub,
                              input_size_sub_features, input_size_sub_profile_features, fc1_dropout, fc2_dropout,
@@ -582,17 +511,18 @@ def main(is_cuda, cluster_dir=None):
 
 
 if __name__ == '__main__':
-    """
-    sys.argv[1] = main_is_cuda
-    sys.argv[2] = cluster directory name
-    """
-    main_is_cuda = sys.argv[1]
-    if len(sys.argv) > 2:
-        cluster_directory = sys.argv[2]
-    else:
-        cluster_directory = None
-    print(f'running with cuda: {main_is_cuda}')
-    if main_is_cuda == 'False':
-        main_is_cuda = False
-    main(main_is_cuda, cluster_directory)
-    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} Done!')
+    main(is_cuda=False)
+    # """
+    # sys.argv[1] = main_is_cuda
+    # sys.argv[2] = cluster directory name
+    # """
+    # main_is_cuda = sys.argv[1]
+    # if len(sys.argv) > 2:
+    #     cluster_directory = sys.argv[2]
+    # else:
+    #     cluster_directory = None
+    # print(f'running with cuda: {main_is_cuda}')
+    # if main_is_cuda == 'False':
+    #     main_is_cuda = False
+    # main(main_is_cuda, cluster_directory)
+    # print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} Done!')

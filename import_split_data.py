@@ -3,13 +3,19 @@ import os
 from collections import defaultdict
 import joblib
 from time import gmtime, strftime
-import torchnet as tnt
+from utils import load_dataset_folders, get_model_layer_sizes, create_dataset_dict
+
 
 class ImportSplitData:
     """"This class implements the import, join and sort of all the data parts in folders for each dataset, assuming
     numbered folders for train, testi, valid, with same list of objects inside """
 
     def __init__(self, cluster_dir=None):
+
+        self.train_data = None
+        self.test_data = None
+        self.validation_data = None
+        self.layers_input_size = None
 
         if cluster_dir is None:
             self.folder_list = os.listdir(os.path.join(os.getcwd(), 'features_to_use'))
@@ -86,26 +92,42 @@ class ImportSplitData:
 
         return self.all_data_dict
 
+    def concat_datasets_strategy(self):
 
-def load_data(folder_path: str) -> dict:
-    """
-    Load data from a specific folder
-    :param folder_path: str: the folder's path to load from
-    :return: dict: {file_name: file} with all the data in the folder
-    """
-    # iterate over all files in each dataset folder
-    data_dict = dict()
-    for filename in os.listdir(folder_path):
-        print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} load {filename} from {folder_path}')
-        if filename == '.DS_Store':
-            continue
-        # connect all part of files of the same dataset
-        file_path = os.path.join(folder_path, filename)
-        file = joblib.load(file_path)
-        data_dict[filename.split('.', 1)[0]] = file
+        print('concat_datasets_strategy - populating train_data and test_data')
+        # create pytorch dataset for each data folder and use torchnet.dataset.ConcatDataset to load data on the fly
+        folders_data_dict = defaultdict(dict)
+        # iterate all datasets
+        for dataset, folder_list in self.data_folders_dict.items():
+            # iterate all folders of dataset and load data
+            folders_data_dict = load_dataset_folders(folders_data_dict, dataset, folder_list)
 
-    len_df = pd.DataFrame(data=data_dict[f'branches_lengths_list'],
-                          index=data_dict[f'branch_comments_embedded_text_df'].index)
-    data_dict['len_df'] = len_df
+        self.train_data = folders_data_dict['train']
+        self.test_data = folders_data_dict['testi']
 
-    return data_dict
+        print('running get_model_layer_sizes')
+        self.layers_input_size = get_model_layer_sizes(self.train_data[next(iter(self.train_data))])
+
+    def import_all_strategy(self):
+
+        print('import_all_strategy - populating train_data and test_data and validation_data')
+        # join all data folders for each dataset approach
+        self.load_join_data()
+        all_data_dict = self.sort_joined_data()
+
+        # load train data
+        print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create train data')
+        self.train_data = create_dataset_dict('train', all_data_dict)
+        self.layers_input_size = get_model_layer_sizes(self.train_data)
+
+        # load test data
+        print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create test data')
+        self.test_data = create_dataset_dict('test', all_data_dict)
+
+        # load valid data
+        if 'valid' in all_data_dict.keys():
+            print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create validation data')
+            self.validation_data = create_dataset_dict('valid', all_data_dict)
+
+
+
