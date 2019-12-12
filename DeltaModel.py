@@ -10,20 +10,19 @@ class DeltaModel(nn.Module):
     A deep learning model class with the following logic of taking 3 different sectors of signals in data for predicting
     if the event "delta" occurred in the discussion "branch"
     """
-    def __init__(self, init_lstm_text, init_lstm_comments, init_lstm_users, init_conv1d_text, init_conv1d_sub_features,
-                 init_conv1d_sub_profile_features, input_size_text_sub, input_size_sub_features,
-                 input_size_sub_profile_features, batch_size, num_labels, first_linear_reduction,
+    def __init__(self, model_hyper_params_dict, batch_size, num_labels, first_linear_reduction,
                  second_linear_reduction, fc1_dropout, fc2_dropout, is_cuda):
         """
-        :param init_lstm_text: embedded text LSTM hyper parameters
-        :param init_lstm_comments: comment features LSTM hyper parameters
-        :param init_lstm_users: user features LSTM hyper parameters
-        :param init_conv1d_text: submission embedded text conv hyper parameters
-        :param init_conv1d_sub_features: submission features conv hyper parameters
-        :param init_conv1d_sub_profile_features: submitter features conv hyper parameters
-        :param input_size_text_sub: length of embedded text vector of submission
-        :param input_size_sub_features: length of submission feature vector
-        :param input_size_sub_profile_features: length of submitter feature vector
+        :param model_hyper_params_dict: holds following:
+            init_lstm_text: embedded text LSTM hyper parameters
+            init_lstm_comments: comment features LSTM hyper parameters
+            init_lstm_users: user features LSTM hyper parameters
+            init_conv1d_text: submission embedded text conv hyper parameters
+            init_conv1d_sub_features: submission features conv hyper parameters
+            :init_conv1d_sub_profile_features: submitter features conv hyper parameters
+            input_size_text_sub: length of embedded text vector of submission
+            input_size_sub_features: length of submission feature vector
+            input_size_sub_profile_features: length of submitter feature vector
         :param batch_size: size of batch
         :param num_labels: number of labels
         :param first_linear_reduction: linear size from branch hidden rep output to this size
@@ -36,9 +35,9 @@ class DeltaModel(nn.Module):
         # check if gpu is available
         # self.hparams.on_gpu = tr.cuda.is_available()
 
-        self.init_lstm_text = init_lstm_text
-        self.init_lstm_comments = init_lstm_comments
-        self.init_lstm_users = init_lstm_users
+        self.init_lstm_text = model_hyper_params_dict['init_lstm_text']
+        self.init_lstm_comments = model_hyper_params_dict['init_lstm_comments']
+        self.init_lstm_users = model_hyper_params_dict['init_lstm_users']
         self.is_cuda = is_cuda
 
         # # initialize LSTM's hidden states
@@ -65,48 +64,48 @@ class DeltaModel(nn.Module):
                                                  self.init_lstm_users.num_layers, self.init_lstm_users.batch_first)
 
         # convolution layers
-        self.conv_sub_text = self.create_conv1d_layer(init_conv1d_text.in_channels, init_conv1d_text.out_channels,
-                                                      init_conv1d_text.kernel_size, init_conv1d_text.stride,
-                                                      init_conv1d_text.padding)
+        self.conv_sub_text = self.create_conv1d_layer(model_hyper_params_dict['init_conv1d_text'].in_channels, model_hyper_params_dict['init_conv1d_text'].out_channels,
+                                                      model_hyper_params_dict['init_conv1d_text'].kernel_size, model_hyper_params_dict['init_conv1d_text'].stride,
+                                                      model_hyper_params_dict['init_conv1d_text'].padding)
 
-        self.conv_sub_features = self.create_conv1d_layer(init_conv1d_sub_features.in_channels,
-                                                          init_conv1d_sub_features.out_channels,
-                                                          init_conv1d_sub_features.kernel_size,
-                                                          init_conv1d_sub_features.stride,
-                                                          init_conv1d_sub_features.padding)
+        self.conv_sub_features = self.create_conv1d_layer(model_hyper_params_dict['init_conv1d_sub_features'].in_channels,
+                                                          model_hyper_params_dict['init_conv1d_sub_features'].out_channels,
+                                                          model_hyper_params_dict['init_conv1d_sub_features'].kernel_size,
+                                                          model_hyper_params_dict['init_conv1d_sub_features'].stride,
+                                                          model_hyper_params_dict['init_conv1d_sub_features'].padding)
 
-        self.conv_sub_user = self.create_conv1d_layer(init_conv1d_sub_profile_features.in_channels,
-                                                      init_conv1d_sub_profile_features.out_channels,
-                                                      init_conv1d_sub_profile_features.kernel_size,
-                                                      init_conv1d_sub_profile_features.stride,
-                                                      init_conv1d_sub_profile_features.padding)
+        self.conv_sub_user = self.create_conv1d_layer(model_hyper_params_dict['init_conv1d_sub_profile_features'].in_channels,
+                                                      model_hyper_params_dict['init_conv1d_sub_profile_features'].out_channels,
+                                                      model_hyper_params_dict['init_conv1d_sub_profile_features'].kernel_size,
+                                                      model_hyper_params_dict['init_conv1d_sub_profile_features'].stride,
+                                                      model_hyper_params_dict['init_conv1d_sub_profile_features'].padding)
         # activation layers
-        self.leaky_relu_text = nn.LeakyReLU(init_conv1d_text.leakyRelu)
-        self.leaky_relu_features = nn.LeakyReLU(init_conv1d_sub_features.leakyRelu)
-        self.leaky_relu_user = nn.LeakyReLU(init_conv1d_sub_profile_features.leakyRelu)
+        self.leaky_relu_text = nn.LeakyReLU(model_hyper_params_dict['init_conv1d_text'].leakyRelu)
+        self.leaky_relu_features = nn.LeakyReLU(model_hyper_params_dict['init_conv1d_sub_features'].leakyRelu)
+        self.leaky_relu_user = nn.LeakyReLU(model_hyper_params_dict['init_conv1d_sub_profile_features'].leakyRelu)
 
         # calculate the output length of the convolutions for the definition of the linear layers dimensions
-        _, _, output_length_text = self.calc_conv1d_output_shape(batch_size, init_conv1d_text.out_channels,
-                                                                 input_size_text_sub, init_conv1d_text.padding,
-                                                                 init_conv1d_text.kernel_size, init_conv1d_text.stride)
+        _, _, output_length_text = self.calc_conv1d_output_shape(batch_size, model_hyper_params_dict['init_conv1d_text'].out_channels,
+                                                                 model_hyper_params_dict['input_size_text_sub'], model_hyper_params_dict['init_conv1d_text'].padding,
+                                                                 model_hyper_params_dict['init_conv1d_text'].kernel_size, model_hyper_params_dict['init_conv1d_text'].stride)
         _, _, output_length_comments = self.calc_conv1d_output_shape(batch_size,
-                                                                     init_conv1d_sub_features.out_channels,
-                                                                     input_size_sub_features,
-                                                                     init_conv1d_sub_features.padding,
-                                                                     init_conv1d_sub_features.kernel_size,
-                                                                     init_conv1d_sub_features.stride)
+                                                                     model_hyper_params_dict['init_conv1d_sub_features'].out_channels,
+                                                                     model_hyper_params_dict['input_size_sub_features'],
+                                                                     model_hyper_params_dict['init_conv1d_sub_features'].padding,
+                                                                     model_hyper_params_dict['init_conv1d_sub_features'].kernel_size,
+                                                                     model_hyper_params_dict['init_conv1d_sub_features'].stride)
         _, _, output_length_users = self.calc_conv1d_output_shape(batch_size,
-                                                                  init_conv1d_sub_profile_features.out_channels,
-                                                                  input_size_sub_profile_features,
-                                                                  init_conv1d_sub_profile_features.padding,
-                                                                  init_conv1d_sub_profile_features.kernel_size,
-                                                                  init_conv1d_sub_profile_features.stride)
+                                                                  model_hyper_params_dict['init_conv1d_sub_profile_features'].out_channels,
+                                                                  model_hyper_params_dict['input_size_sub_profile_features'],
+                                                                  model_hyper_params_dict['init_conv1d_sub_profile_features'].padding,
+                                                                  model_hyper_params_dict['init_conv1d_sub_profile_features'].kernel_size,
+                                                                  model_hyper_params_dict['init_conv1d_sub_profile_features'].stride)
 
         self.branch_hidden_rep_len = self.init_lstm_text.hidden_size + self.init_lstm_comments.hidden_size + \
                                      self.init_lstm_users.hidden_size + \
-                                     output_length_text*init_conv1d_text.out_channels + \
-                                     output_length_comments*init_conv1d_sub_features.out_channels + \
-                                     output_length_users*init_conv1d_sub_profile_features.out_channels
+                                     output_length_text*model_hyper_params_dict['init_conv1d_text'].out_channels + \
+                                     output_length_comments*model_hyper_params_dict['init_conv1d_sub_features'].out_channels + \
+                                     output_length_users*model_hyper_params_dict['init_conv1d_sub_profile_features'].out_channels
 
         # number of labels - binary label 1/0 is event delta in branch discussion or not.
         self.num_labels = num_labels

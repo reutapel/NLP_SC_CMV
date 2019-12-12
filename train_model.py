@@ -1,8 +1,6 @@
 import torch as tr
 import torch.nn as nn
 from DeltaModel import DeltaModel
-from model_utils import InitLstm
-from model_utils import InitConv1d
 from import_split_data import ImportSplitData
 import pandas as pd
 from tqdm import tqdm
@@ -15,11 +13,10 @@ from matplotlib.ticker import MaxNLocator
 import os
 import sys
 from datetime import datetime
-import numpy as np
 from collections import defaultdict
 from early_stopping_pytorch.pytorchtools import EarlyStopping
-from utils import create_class_weight, create_dataset_data_loader, create_dataset, create_data_loader
-import torchnet
+from utils import create_class_weight, create_dataset_data_loader
+
 
 # old_stdout = sys.stdout
 # log_file = open("train_model.log", "w")
@@ -34,11 +31,8 @@ class TrainModel:
     class builds the data sets, data loaders, model, trains and tests the model.
     """
     def __init__(self, import_split_data_obj, learning_rate, criterion, batch_size, num_epochs,
-                 num_labels, fc1, fc2,
-                 init_lstm_text, init_lstm_comments, init_lstm_users, init_conv_text, init_conv_sub_features,
-                 init_conv_sub_profile_features, input_size_text_sub, input_size_sub_features,
-                 input_size_sub_profile_features, fc1_droput, fc2_dropout, is_cuda, curr_model_outputs_dir,
-                 concat_datasets=False):
+                 num_labels, fc1, fc2, fc1_droput, fc2_dropout, is_cuda, curr_model_outputs_dir,
+                 concat_datasets=False, average_loss_per_batch=True):
         """
         :param import_split_data_obj: ImportSplitData object - holds info of data directory structure,
         and train/test if pre loaded
@@ -49,19 +43,12 @@ class TrainModel:
         :param num_labels: number of labels in data
         :param fc1: first linear reduction size from concatenated hidden size to
         :param fc2: second reduction , before reduction to label dimension of 2
-        :param init_lstm_text: hyper parameters initializer class instance
-        :param init_lstm_comments: hyper parameters initializer class instance
-        :param init_lstm_users: hyper parameters initializer class instance
-        :param init_conv_text: hyper parameters initializer class instance
-        :param init_conv_sub_features: hyper parameters initializer class instance
-        :param init_conv_sub_profile_features: hyper parameters initializer class instance
-        :param input_size_text_sub: size of embedded text vector
-        :param input_size_sub_features: size of submission feature vector
-        :param input_size_sub_profile_features: size of submitter feature vector
         :param fc1_droput: probability for first dropout
         :param fc2_dropout: probability for second dropout
         :param bool is_cuda: if running with cuda or not
         :param curr_model_outputs_dir: the directory to save the model's output
+        :param average_loss_per_batch: if to average epoch loss in numbers of batches - so plot loss of avg batch and
+        not epoch
         """
         self.import_split_data_obj = import_split_data_obj
         self.learning_rate = learning_rate
@@ -71,40 +58,38 @@ class TrainModel:
         self.is_cuda = is_cuda
         self.sigmoid = nn.Sigmoid()
         self.curr_model_outputs_dir = curr_model_outputs_dir
-
+        self.average_loss_per_batch = average_loss_per_batch
         # create model
-        self.model = DeltaModel(init_lstm_text, init_lstm_comments, init_lstm_users, init_conv_text,
-                                init_conv_sub_features, init_conv_sub_profile_features, input_size_text_sub,
-                                input_size_sub_features, input_size_sub_profile_features, self.batch_size, num_labels,
+        self.model = DeltaModel(import_split_data_obj.model_hyper_params_dict, self.batch_size, num_labels,
                                 fc1, fc2, fc1_droput, fc2_dropout, is_cuda)
 
         # on the model.parameters will be performed the update by stochastic gradient descent
         self.optimizer = tr.optim.Adam(self.model.parameters(), lr=learning_rate)
-
-        # create datasets
-        if concat_datasets:
-            train_datasets_list = list()
-            test_datasets_list = list()
-            # create customdataset per folder for train
-            for folder, data_dict in import_split_data_obj.train_data.items():
-                folder_train_dataset = create_dataset(data_dict)
-                train_datasets_list.append(folder_train_dataset)
-            # concatenate datasets for on the fly loading of data
-            self.train_dataset = torchnet.dataset.ConcatDataset(train_datasets_list)
-            # create customdataset per folder for test
-            for folder, data_dict in import_split_data_obj.test_data.items():
-                folder_test_dataset = create_dataset(data_dict)
-                test_datasets_list.append(folder_test_dataset)
-            # concatenate datasets for on the fly loading of data
-            self.test_dataset = torchnet.dataset.ConcatDataset(test_datasets_list)
-
-        else:
-            self.train_dataset = create_dataset(import_split_data_obj.train_data)
-            self.test_dataset = create_dataset(import_split_data_obj.test_data)
-
-        # create data loaders
-        self.train_loader = create_data_loader(self.train_dataset, self.batch_size)
-        self.test_loader = create_data_loader(self.test_dataset, self.batch_size)
+        # TODO - change to fit import strategy
+        # # create datasets
+        # if concat_datasets:
+        #     train_datasets_list = list()
+        #     test_datasets_list = list()
+        #     # create customdataset per folder for train
+        #     for folder, data_dict in import_split_data_obj.train_data.items():
+        #         folder_train_dataset = create_dataset(data_dict)
+        #         train_datasets_list.append(folder_train_dataset)
+        #     # concatenate datasets for on the fly loading of data
+        #     self.train_dataset = torchnet.dataset.ConcatDataset(train_datasets_list)
+        #     # create customdataset per folder for test
+        #     for folder, data_dict in import_split_data_obj.test_data.items():
+        #         folder_test_dataset = create_dataset(data_dict)
+        #         test_datasets_list.append(folder_test_dataset)
+        #     # concatenate datasets for on the fly loading of data
+        #     self.test_dataset = torchnet.dataset.ConcatDataset(test_datasets_list)
+        #
+        # else:
+        #     self.train_dataset = create_dataset(import_split_data_obj.train_data)
+        #     self.test_dataset = create_dataset(import_split_data_obj.test_data)
+        #
+        # # create data loaders
+        # self.train_loader = create_data_loader(self.train_dataset, self.batch_size)
+        # self.test_loader = create_data_loader(self.test_dataset, self.batch_size)
 
         self.train_loss_list = list()
         self.test_loss_list = list()
@@ -146,7 +131,7 @@ class TrainModel:
             train_labels = tr.Tensor()
             train_predictions = tr.Tensor()
             train_probabilities = tr.Tensor()
-
+            batch_cnt = 0
             if self.is_cuda:
                 train_labels = train_labels.cuda()
                 train_predictions = train_predictions.cuda()
@@ -156,8 +141,8 @@ class TrainModel:
             # loop on train folders, create dataset / data loader for each folder and train every epoch on all the
             # folders sequentially
             # create dataset and data loader
-            print('training by folders')
-            for folder in self.import_split_data_obj.data_folders_dict['train'].items():
+            print('training by folders') # TODO: SHIMON - GENERALIZE TO ALL IMPORT STRATEGIES?
+            for folder in self.import_split_data_obj.data_folders_dict['train']:
 
                 self.train_dataset, self.train_loader = create_dataset_data_loader(folder, self.batch_size)
 
@@ -165,7 +150,7 @@ class TrainModel:
 
                     # forward
                     outputs, sorted_idx, batch_size = self.model(data_points)
-                    # TODO: understand impact of packed padded to loss, like function loss in model.py
+
                     # turn to probability of class 1
                     probabilities = self.sigmoid(outputs)
                     outputs = outputs.view(batch_size, -1).float()
@@ -218,14 +203,18 @@ class TrainModel:
                     # update parameters : tensor - learning_rate*gradient
                     self.optimizer.step()
 
-                    if (i+1) % 100 == 0:
+                    if (i+1) % 20 == 0:
                         print('Epoch: [%d%d], Step: [%d%d], Loss: %.4f' % (epoch+1, self.num_epochs, i+1,
                                                                            len(self.train_dataset)//self.batch_size,
                                                                            loss))
-            # average batch losses per epoch
-            self.train_loss_list[epoch] = self.train_loss_list[epoch]/(i+1)  # TODO - CHANGE i BEACUSE FOLDERS
+
+                batch_cnt += i
+            if self.average_loss_per_batch:
+                # average batch losses per epoch
+                self.train_loss_list[epoch] = self.train_loss_list[epoch]/(batch_cnt+1)
+
             # calculate measurements on train data
-            self.calc_measurements(correct, total, train_labels, train_predictions, train_probabilities, epoch,  "train")
+            self.calc_measurements(correct, total, train_labels, train_predictions, train_probabilities, epoch, "train")
             self.test(epoch)
 
             # early_stopping needs the validation loss to check if it has decresed,
@@ -251,8 +240,6 @@ class TrainModel:
         # doesn't save history for backwards, turns off dropouts
         self.model.eval()
 
-        first_batch = True
-
         correct = 0
         total = 0
         test_labels = tr.Tensor()
@@ -267,11 +254,13 @@ class TrainModel:
         # make sure no gradients - memory efficiency - no allocation of tensors to the gradients
         with(tr.no_grad()):
             first_folder = True
+            batch_cnt = 0
+            # average batch losses per epoch
             # loop on test folders, create dataset / data loader for each folder and test every epoch on all the
             # folders sequentially
             # create dataset and data loader
-            print('testing by folders')
-            for folder in self.import_split_data_obj.data_folders_dict['testi'].items():
+            print('testing by folders')        # TODO: SHIMON - GENERALIZE TO ALL IMPORT STRATEGIES?
+            for folder in self.import_split_data_obj.data_folders_dict['testi']:
 
                 self.test_dataset, self.test_loader = create_dataset_data_loader(folder, self.batch_size)
 
@@ -314,8 +303,10 @@ class TrainModel:
                     test_labels = tr.cat((test_labels, labels))
                     test_predictions = tr.cat((test_predictions, predicted))
                     test_probabilities = tr.cat((test_probabilities, probabilities))
-
-        self.test_loss_list[epoch] = self.test_loss_list[epoch] / (i + 1)  # TODO - CHANGE i BEACUSE FOLDERS
+                batch_cnt += i
+        if self.average_loss_per_batch:
+            # average batch losses per epoch
+            self.test_loss_list[epoch] = self.test_loss_list[epoch] / (batch_cnt + 1)
 
         # calculate measurements on test data
         self.calc_measurements(correct, total, test_labels, test_predictions, test_probabilities, epoch, "test")
@@ -413,8 +404,8 @@ class TrainModel:
 
 
 def main(is_cuda, cluster_dir=None):
-
-    concat_datasets = True
+    #TODO: REUT - UNDERSTAND IF import strategy and training affects mu or clusters
+    concat_datasets = False
     import_data_strategy_dict = {0: 'import_all', 1: 'concat_datasets', 2: 'import_when_training'}
     chosen_import_strategy = import_data_strategy_dict[2]
     print('chosen import strategy is: ', chosen_import_strategy)
@@ -426,42 +417,23 @@ def main(is_cuda, cluster_dir=None):
 
     elif chosen_import_strategy == 'import_all':
         import_split_data_obj.import_all_strategy()
+    else:
+        print('import_when_training - will be dealt in model.train()')
+        import_split_data_obj.import_when_training_strategy()
 
     # define hyper parameters of learning phase
     # log makes differences expand to higher numbers because of it's behaivor between 0 to 1
     criterion = nn.BCEWithLogitsLoss()
     learning_rate = 0.001  # range 0.0003-0.001 batch grows -> lr grows
     batch_size = 24  # TRY BATCH SIZE 100
-    num_epochs = 500
+    num_epochs = 2
     num_labels = 2
     fc1 = 32
     fc2 = 16
     fc1_dropout = 0.2
     fc2_dropout = 0.5
 
-    # define LSTM layers hyperparameters
-    # TODO: define sizes according to concat dataset flag
-    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} define LSTM layers hyperparameters')
-    init_lstm_text = InitLstm(input_size=layers_input_size['lstm_text'], hidden_size=20, num_layers=2, batch_first=True)
-    init_lstm_comments = InitLstm(input_size=layers_input_size['lstm_comments'], hidden_size=10, num_layers=2,
-                                  batch_first=True)
-    init_lstm_users = InitLstm(input_size=layers_input_size['lstm_users'], hidden_size=10, num_layers=2,
-                               batch_first=True)
-
-    # define conv layers hyperparameters
-    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} define conv layers hyperparameters')
-    init_conv_text = InitConv1d(in_channels=1, out_channels=9, kernel_size=3, stride=1, padding=0,
-                                leaky_relu_alpha=0.2)
-    init_conv_sub_features = InitConv1d(in_channels=1, out_channels=9, kernel_size=3, stride=1, padding=0,
-                                        leaky_relu_alpha=0.2)
-    init_conv_sub_profile_features = InitConv1d(in_channels=1, out_channels=9, kernel_size=3, stride=1, padding=0,
-                                                leaky_relu_alpha=0.2)
-
-    input_size_text_sub = layers_input_size['input_size_text_sub']
-    input_size_sub_features = layers_input_size['input_size_sub_features']
-    input_size_sub_profile_features = layers_input_size['input_size_sub_profile_features']
-
-    base_directory = os.getenv('PWD')
+    base_directory = os.getcwd() # os.getenv('PWD')
     print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create outputs directory')
     curr_model_outputs_dir = os.path.join(base_directory, 'model_outputs', datetime.now().strftime(
         f'%d_%m_%Y_%H_%M_LR_{learning_rate}_batch_size_{batch_size}_num_epochs_{num_epochs}_fc1_dropout_{fc1_dropout}_'
@@ -472,9 +444,7 @@ def main(is_cuda, cluster_dir=None):
     # create training instance
     print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create training instance')
     train_model = TrainModel(import_split_data_obj, learning_rate, criterion, batch_size, num_epochs, num_labels, fc1,
-                             fc2, init_lstm_text, init_lstm_comments, init_lstm_users, init_conv_text,
-                             init_conv_sub_features, init_conv_sub_profile_features, input_size_text_sub,
-                             input_size_sub_features, input_size_sub_profile_features, fc1_dropout, fc2_dropout,
+                             fc2, fc1_dropout, fc2_dropout,
                              is_cuda, curr_model_outputs_dir, concat_datasets=concat_datasets)
 
     # train and test model

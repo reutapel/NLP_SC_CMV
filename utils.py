@@ -3,7 +3,7 @@ import os
 import torch as tr
 import math
 import numbers
-from model_utils import CustomDataset
+from model_utils import CustomDataset, InitLstm, InitConv1d
 from torch.utils import data as dt
 import joblib
 import pandas as pd
@@ -129,7 +129,7 @@ def create_dataset(data):
     :return: CustomDataset object
     """
 
-    return CustomDataset(*data)
+    return CustomDataset(data)
 
 
 def create_data_loader(dataset, batch_size):
@@ -162,3 +162,29 @@ def replace_0_with_list(df, len_list_in_cell):
             if isinstance(col, numbers.Number):
                 df.loc[i, j] = [0] * len_list_in_cell
     return df
+
+
+def define_model_hyper_params(layers_input_size):
+    # define LSTM layers hyperparameters
+    hyperparams_dict = dict()
+    # TODO: define sizes according to concat dataset flag
+    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} define LSTM layers hyperparameters')
+    hyperparams_dict['init_lstm_text'] = InitLstm(input_size=layers_input_size['lstm_text'], hidden_size=20, num_layers=2, batch_first=True)
+    hyperparams_dict['init_lstm_comments'] = InitLstm(input_size=layers_input_size['lstm_comments'], hidden_size=10, num_layers=2,
+                                  batch_first=True)
+    hyperparams_dict['init_lstm_users'] = InitLstm(input_size=layers_input_size['lstm_users'], hidden_size=10, num_layers=2,
+                               batch_first=True)
+
+    # define conv layers hyperparameters
+    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} define conv layers hyperparameters')
+    hyperparams_dict['init_conv1d_text'] = InitConv1d(in_channels=1, out_channels=9, kernel_size=3, stride=1, padding=0,
+                                leaky_relu_alpha=0.2)
+    hyperparams_dict['init_conv1d_sub_features'] = InitConv1d(in_channels=1, out_channels=9, kernel_size=3, stride=1, padding=0,
+                                        leaky_relu_alpha=0.2)
+    hyperparams_dict['init_conv1d_sub_profile_features'] = InitConv1d(in_channels=1, out_channels=9, kernel_size=3, stride=1, padding=0,
+                                                leaky_relu_alpha=0.2)
+
+    hyperparams_dict['input_size_text_sub'] = layers_input_size['input_size_text_sub']
+    hyperparams_dict['input_size_sub_features'] = layers_input_size['input_size_sub_features']
+    hyperparams_dict['input_size_sub_profile_features'] = layers_input_size['input_size_sub_profile_features']
+    return hyperparams_dict

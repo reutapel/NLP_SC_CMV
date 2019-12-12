@@ -129,3 +129,4 @@ class InitConv1d:
         self.stride = stride
         self.padding = padding
         self.leakyRelu = leaky_relu_alpha
+

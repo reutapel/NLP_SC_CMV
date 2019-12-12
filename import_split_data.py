@@ -3,7 +3,7 @@ import os
 from collections import defaultdict
 import joblib
 from time import gmtime, strftime
-from utils import load_dataset_folders, get_model_layer_sizes, create_dataset_dict
+from utils import load_dataset_folders, get_model_layer_sizes, create_dataset_dict, define_model_hyper_params, load_data
 
 
 class ImportSplitData:
@@ -16,6 +16,7 @@ class ImportSplitData:
         self.test_data = None
         self.validation_data = None
         self.layers_input_size = None
+        self.model_hyper_params_dict = None
 
         if cluster_dir is None:
             self.folder_list = os.listdir(os.path.join(os.getcwd(), 'features_to_use'))
@@ -93,6 +94,10 @@ class ImportSplitData:
         return self.all_data_dict
 
     def concat_datasets_strategy(self):
+        """
+        loads all data folders for train and test
+        :return:
+        """
 
         print('concat_datasets_strategy - populating train_data and test_data')
         # create pytorch dataset for each data folder and use torchnet.dataset.ConcatDataset to load data on the fly
@@ -107,6 +112,7 @@ class ImportSplitData:
 
         print('running get_model_layer_sizes')
         self.layers_input_size = get_model_layer_sizes(self.train_data[next(iter(self.train_data))])
+        self.model_hyper_params_dict = define_model_hyper_params(self.layers_input_size)
 
     def import_all_strategy(self):
 
@@ -119,6 +125,7 @@ class ImportSplitData:
         print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create train data')
         self.train_data = create_dataset_dict('train', all_data_dict)
         self.layers_input_size = get_model_layer_sizes(self.train_data)
+        self.model_hyper_params_dict = define_model_hyper_params(self.layers_input_size)
 
         # load test data
         print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create test data')
@@ -128,6 +135,22 @@ class ImportSplitData:
         if 'valid' in all_data_dict.keys():
             print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} create validation data')
             self.validation_data = create_dataset_dict('valid', all_data_dict)
+
+    def import_when_training_strategy(self):
+        """
+        load first folder just to determine layer sizes for model hyper parameters
+        :return:
+        """
+        print('import_all_strategy - loading train0 to set data sizes')
+        path = os.path.join(os.getcwd(), 'features_to_use', 'train0')
+        # get dict of data objects per folder
+        train0_data_dict = load_data(path)
+        self.layers_input_size = get_model_layer_sizes(train0_data_dict)
+        self.model_hyper_params_dict = define_model_hyper_params(self.layers_input_size)
+
+
+
+
 
 
 
