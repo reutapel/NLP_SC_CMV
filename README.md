@@ -1,2 +1,2 @@
 # NLP_SC_CMV
-Predict whether a discussion yields an event. Particular work with Reddit change my view, and predict whether a discussion ends with a comments that got a Delta.
+Predict whether a discussion yields an event. More specificly for the current work with Reddit change my view data, predict whether an event of persuasion occures in a discussion, by predicting if any of the comments in the defined discussion got a Delta.
