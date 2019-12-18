@@ -147,6 +147,7 @@ class ImportSplitData:
         train0_data_dict = load_data(path)
         self.layers_input_size = get_model_layer_sizes(train0_data_dict)
         self.model_hyper_params_dict = define_model_hyper_params(self.layers_input_size)
+        print('FINISH - import_all_strategy - loading train0 to set data sizes')
 
 
 

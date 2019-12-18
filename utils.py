@@ -144,7 +144,7 @@ def create_data_loader(dataset, batch_size):
 
 
 def create_dataset_data_loader(folder, batch_size):
-    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} load from {folder}')
+    print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} in create_dataset_data_loader load from {folder}')
     # get folder path
     path = os.path.join(os.getcwd(), 'features_to_use', folder)
     # get dict of data objects per folder

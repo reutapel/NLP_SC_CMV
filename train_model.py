@@ -16,6 +16,10 @@ from datetime import datetime
 from collections import defaultdict
 from early_stopping_pytorch.pytorchtools import EarlyStopping
 from utils import create_class_weight, create_dataset_data_loader
+# #!/usr/bin/env python
+# import psutil
+# # you can convert that object to a dictionary
+# print(dict(psutil.virtual_memory()._asdict()))
 
 
 # old_stdout = sys.stdout
@@ -99,6 +103,12 @@ class TrainModel:
         self.measurements_dict["train"] = dict()
         self.measurements_dict["test"] = dict()
 
+        self.train_dataset = None
+        self.train_loader = None
+
+        self.test_dataset = None
+        self.test_loader = None
+
         # calculate number of trainable parameters
         print(sum(p.numel() for p in self.model.parameters() if p.requires_grad), " trainable parameters in model")
 
@@ -143,7 +153,9 @@ class TrainModel:
             # create dataset and data loader
             print('training by folders') # TODO: SHIMON - GENERALIZE TO ALL IMPORT STRATEGIES?
             for folder in self.import_split_data_obj.data_folders_dict['train']:
-
+                print(" loading train folder: ", folder)
+                self.train_dataset = None
+                self.train_loader = None
                 self.train_dataset, self.train_loader = create_dataset_data_loader(folder, self.batch_size)
 
                 for i, (data_points, labels) in tqdm(enumerate(self.train_loader), desc='batch'):
@@ -204,11 +216,13 @@ class TrainModel:
                     self.optimizer.step()
 
                     if (i+1) % 20 == 0:
-                        print('Epoch: [%d%d], Step: [%d%d], Loss: %.4f' % (epoch+1, self.num_epochs, i+1,
+                        print('Epoch: [%d of %d], Step: [%d of %d], Loss: %.4f' % (epoch+1, self.num_epochs, i+1,
                                                                            len(self.train_dataset)//self.batch_size,
                                                                            loss))
-
+                print("finished folder %s iteration" % folder)
                 batch_cnt += i
+                print("number of batches from all trained folders so far is: ", str(batch_cnt))
+            print("finished all train folders for epoch: ", str(epoch))
             if self.average_loss_per_batch:
                 # average batch losses per epoch
                 self.train_loss_list[epoch] = self.train_loss_list[epoch]/(batch_cnt+1)
@@ -261,7 +275,8 @@ class TrainModel:
             # create dataset and data loader
             print('testing by folders')        # TODO: SHIMON - GENERALIZE TO ALL IMPORT STRATEGIES?
             for folder in self.import_split_data_obj.data_folders_dict['testi']:
-
+                self.test_dataset = None
+                self.test_loader = None
                 self.test_dataset, self.test_loader = create_dataset_data_loader(folder, self.batch_size)
 
                 for i, (data_points, labels) in tqdm(enumerate(self.test_loader), desc='batch'):
@@ -462,15 +477,18 @@ def main(is_cuda, cluster_dir=None):
         if not os.path.exists(curr_model_outputs_mu_dir):
             os.makedirs(curr_model_outputs_mu_dir)
         train_model.curr_model_outputs_dir = curr_model_outputs_mu_dir
+        print(" starting train")
         train_model.train(mu=curr_mu)
         joblib.dump(train_model.measurements_dict, os.path.join(curr_model_outputs_dir, 'measurements_dict.pkl'))
 
         print(f'{strftime("%a, %d %b %Y %H:%M:%S", gmtime())} plot graphs')
         measurments_list = ["accuracy", "auc", "precision", "recall", "f_score", "macro_precision", "macro_recall",
                             "macro_f_score"]
+        print("plotting graph")
         train_model.plot_graph(train_model.num_epochs, train_model.train_loss_list, train_model.test_loss_list, 'loss')
         train_model.mu_train_loss_dict[curr_mu] = train_model.train_loss_list
         train_model.mu_test_loss_dict[curr_mu] = train_model.test_loss_list
+        print("plotting measurements")
         train_model.plot_measurements(measurments_list)
 
     joblib.dump(train_model.mu_train_loss_dict, os.path.join(curr_model_outputs_dir, 'mu_train_loss_dict.pkl'))
