@@ -1545,6 +1545,18 @@ if __name__ == '__main__':
     sys.argv[4] = doc2vec_vector_size
     sys.argv[5] = use_bert
     sys.argv[6] = clusters directory name
+    
+    command to create features for train_1 with bert:
+    python3 CreateFeatures_delat.py manual_parallel_main train_1 True 1 True
+    command to create features for test_1 with bert (need first to copy the trained_models folder from train_1):
+    python3 CreateFeatures_delat.py manual_parallel_main test_1 False 1 True
+    command to create features for train_1 with doc2vec:
+    python3 CreateFeatures_delat.py manual_parallel_main train_1 True 300 False
+    command to create features for test_1 with doc2vec (need first to copy the trained_models folder from train_1):
+    python3 CreateFeatures_delat.py manual_parallel_main test_1 False 0 False
+    
+    if we want to run on a specific cluster name:
+    python3 CreateFeatures_delat.py manual_parallel_main train_1 True 1 True clusters_directory_name
     """
     main_func = sys.argv[1]
     print(f'Start run {main_func}')
